@@ -8,7 +8,7 @@
   const { speed, sessionHistory } = appStore
 
   let showHistory = false
-  let apiStatus: ApiStatus = { groq: 'checking', cartesia: 'checking' }
+  let apiStatus: ApiStatus = { groq: 'checking' }
 
   onMount(async () => {
     apiStatus = await checkApiHealth()
@@ -22,20 +22,12 @@
     }
   }
 
-  function getStatusLabel(status: ApiStatus['groq']) {
-    switch (status) {
-      case 'ok': return 'Connected'
-      case 'error': return 'Error'
-      default: return 'Checking...'
-    }
-  }
-
   function isAllOk(status: ApiStatus) {
-    return status.groq === 'ok' && status.cartesia === 'ok'
+    return status.groq === 'ok'
   }
 
   function isAnyError(status: ApiStatus) {
-    return status.groq === 'error' || status.cartesia === 'error'
+    return status.groq === 'error'
   }
 </script>
 
@@ -50,20 +42,16 @@
     <div class="flex items-center gap-4">
       <div class="flex items-center gap-2">
         <div class="w-3 h-3 rounded-full {getStatusColor(apiStatus.groq)}"></div>
-        <span class="text-xs text-gray-400">Groq AI</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <div class="w-3 h-3 rounded-full {getStatusColor(apiStatus.cartesia)}"></div>
-        <span class="text-xs text-gray-400">Cartesia</span>
+        <span class="text-xs text-gray-400">Groq (LLM + STT + TTS)</span>
       </div>
     </div>
     <div class="text-xs {isAllOk(apiStatus) ? 'text-green-400' : isAnyError(apiStatus) ? 'text-red-400' : 'text-yellow-400'}">
       {#if isAllOk(apiStatus)}
-        ✓ All services connected
+        ✓ Connected
       {:else if isAnyError(apiStatus)}
-        ⚠ Check API keys
+        ⚠ Check API key
       {:else}
-        Checking connections...
+        Checking...
       {/if}
     </div>
   </div>

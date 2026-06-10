@@ -3,6 +3,7 @@
   import { appStore } from '../stores/app'
   import { get } from 'svelte/store'
   import type { Message } from '../types'
+  import { generateTTS, revokeTTSUrl } from '../services/tts'
 
   const { currentSession, status, speed, setStatus, addMessage, setError, error } = appStore
 
@@ -21,6 +22,7 @@
   let messagesContainer: HTMLDivElement | null = null
   let pendingTTS: { text: string; audioUrl: string } | null = null
   let isPlayingTTS = false
+  let sessionActive = false
 
   // Detect iOS to show TTS play button instead of auto-play
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
@@ -82,6 +84,7 @@
       }
       mediaRecorder.onstop = processAudio
 
+      sessionActive = true
       startListening()
     } catch (err) {
       setError('Microphone access denied. Please enable it in your browser settings.')
@@ -90,7 +93,7 @@
   }
 
   function startListening() {
-    if (!mediaRecorder || isProcessingTurn || isRecording) return
+    if (!mediaRecorder || isProcessingTurn || isRecording || !sessionActive) return
     clearWatchdog()
     audioChunks = []
     isRecording = true
@@ -307,10 +310,11 @@ RULES:
   }
 
   async function playTTS(text: string) {
-    const apiKey = import.meta.env.VITE_CARTESIA_API_KEY
+    // Use Groq API key for TTS (same provider as LLM/STT)
+    const apiKey = import.meta.env.VITE_GROQ_API_KEY
 
     if (!apiKey) {
-      console.warn('Cartesia API key not configured')
+      console.warn('Groq API key not configured for TTS')
       isProcessingTurn = false
       return
     }
@@ -318,53 +322,25 @@ RULES:
     try {
       setStatus('speaking')
 
-      const response = await fetch('https://api.cartesia.ai/tts/bytes', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Cartesia-Version': '2024-06-10'
-        },
-        body: JSON.stringify({
-          model_id: 'sonic-3.5',
-          transcript: text,
-          voice: {
-            mode: 'id',
-            id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4'
-          },
-          language: 'en',
-          output_format: {
-            container: 'mp3',
-            bit_rate: 128000,
-            sample_rate: 44100
-          }
-        })
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Cartesia error:', response.status, errorText)
-        throw new Error(`Cartesia API error: ${response.status}`)
-      }
-
-      const arrayBuffer = await response.arrayBuffer()
-      const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' })
-      const audioUrl = URL.createObjectURL(audioBlob)
+      const { audioUrl } = await generateTTS(text, apiKey, 'groq')
 
       if (isIOS) {
-        // On iOS, store audio and let user tap to play
         pendingTTS = { text, audioUrl }
         isProcessingTurn = false
         startListening()
         return
       }
 
-      // Desktop: auto-play
       currentAudio = new Audio(audioUrl)
       currentAudio.playbackRate = $speed
+      console.log('Audio element created, attempting to play...')
+
+      currentAudio.oncanplay = () => {
+        console.log('Audio can play, starting...')
+      }
 
       currentAudio.onended = () => {
-        URL.revokeObjectURL(audioUrl)
+        revokeTTSUrl(audioUrl)
         currentAudio = null
         isProcessingTurn = false
         clearWatchdog()
@@ -373,7 +349,7 @@ RULES:
 
       currentAudio.onerror = (e) => {
         console.error('Audio playback error:', e)
-        URL.revokeObjectURL(audioUrl)
+        revokeTTSUrl(audioUrl)
         currentAudio = null
         isProcessingTurn = false
         clearWatchdog()
@@ -399,7 +375,7 @@ RULES:
     currentAudio.playbackRate = $speed
 
     currentAudio.onended = () => {
-      URL.revokeObjectURL(pendingTTS.audioUrl)
+      revokeTTSUrl(pendingTTS.audioUrl)
       pendingTTS = null
       currentAudio = null
       isPlayingTTS = false
@@ -409,7 +385,7 @@ RULES:
     }
 
     currentAudio.onerror = () => {
-      URL.revokeObjectURL(pendingTTS.audioUrl)
+      revokeTTSUrl(pendingTTS.audioUrl)
       pendingTTS = null
       currentAudio = null
       isPlayingTTS = false
@@ -422,8 +398,12 @@ RULES:
   }
 
   function cleanup() {
+    sessionActive = false
     clearWatchdog()
-    if (mediaRecorder) mediaRecorder.stop()
+    if (mediaRecorder) {
+      mediaRecorder.onstop = null // prevent processAudio after cleanup
+      if (mediaRecorder.state !== 'inactive') mediaRecorder.stop()
+    }
     if (audioContext) audioContext.close()
     if (animationFrame) cancelAnimationFrame(animationFrame)
     if (silenceTimeout) clearTimeout(silenceTimeout)
