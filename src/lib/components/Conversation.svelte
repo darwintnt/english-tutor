@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { appStore } from '../stores/app'
+  import { get } from 'svelte/store'
   import type { Message } from '../types'
 
   const { currentSession, status, speed, setStatus, addMessage, setError } = appStore
@@ -41,7 +42,7 @@
       source.connect(analyser)
       analyser.fftSize = 256
 
-      mediaRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm' })
+      mediaRecorder = new MediaRecorder(micStream)
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunks.push(e.data)
       }
@@ -108,7 +109,7 @@
 
     isProcessingTurn = true
 
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
+    const audioBlob = new Blob(audioChunks)
 
     try {
       const { pipeline, env } = await import('@huggingface/transformers')
@@ -143,9 +144,15 @@
 
     } catch (err) {
       console.error('STT error:', err)
-      addMessage({ role: 'assistant', content: "I didn't catch that. Could you repeat?" })
       isProcessingTurn = false
-      startListening()
+      // Add delay before retry to prevent tight loops on iOS
+      setTimeout(() => {
+        const currentStatus = get(status)
+        if (currentStatus !== 'idle') {
+          addMessage({ role: 'assistant', content: "I didn't catch that. Could you repeat?" })
+          startListening()
+        }
+      }, 1500)
     }
   }
 
