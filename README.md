@@ -1,47 +1,111 @@
-# Svelte + TS + Vite
+# English Speaking Coach
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+A PWA that acts as your personal AI English conversation tutor. Speak freely, get corrections in Spanish, improve your spoken English.
 
-## Recommended IDE Setup
+## Features
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+- **Voice-first conversation** — Speak naturally, no typing required
+- **Real-time corrections** — Grammar mistakes are caught and explained in Spanish at the end of each turn
+- **Adjustable speed** — Listen at 0.75x, 1x, 1.25x, or 1.5x speed
+- **Installable PWA** — Works on iPhone, Android, and desktop as a native app
+- **Offline STT** — Speech-to-text runs locally (Whisper), no data sent to servers for transcription
+- **Session history** — Tracks your conversations and corrections over time
 
-## Need an official Svelte framework?
+## How it works
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
-
-## Technical considerations
-
-**Why use this over SvelteKit?**
-
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
-
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
-
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `allowJs` in the TS template?**
-
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
 ```
+You speak → Whisper (browser) → LLaMA 3.3 (Groq) → Cartesia TTS → You hear the response
+                              ↓
+                    Correction in Spanish (if errors)
+```
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | Svelte + Vite + TypeScript |
+| STT | Whisper (transformers.js, runs in browser) |
+| VAD | Silero VAD (voice activity detection) |
+| LLM | LLaMA 3.3 70B via Groq API |
+| TTS | Cartesia Sonic 3.5 |
+| PWA | vite-plugin-pwa + Workbox |
+
+## Setup
+
+### 1. Clone and install
+
+```bash
+cd english-tutor
+npm install
+```
+
+### 2. Configure API keys
+
+Create a `.env` file (copy from `.env.example`):
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and add your keys:
+
+- **Groq**: https://console.groq.com/keys — free tier available
+- **Cartesia**: https://cartesia.ai — free tier with 300k chars/month
+
+```
+VITE_GROQ_API_KEY=gsk_...
+VITE_CARTESIA_API_KEY=...
+```
+
+### 3. Run
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser.
+
+### 4. Install as PWA
+
+- **Desktop**: Chrome/Edge → three dots menu → "Install English Coach"
+- **iPhone**: Safari → Share button → "Add to Home Screen"
+- **Android**: Chrome → three dots menu → "Install app"
+
+## Project Structure
+
+```
+src/
+├── App.svelte                    # Root component, screen routing
+├── lib/
+│   ├── types.ts                 # TypeScript types (Message, Session, etc.)
+│   ├── stores/
+│   │   └── app.ts               # Global state (screen, session, speed)
+│   └── components/
+│       ├── Home.svelte           # Start screen + speed selector
+│       ├── Conversation.svelte   # Main conversation loop
+│       └── EndSession.svelte     # Session summary
+.env.example                      # API key template
+vite.config.ts                    # Vite + PWA configuration
+```
+
+## Usage
+
+1. Tap **Start Conversation**
+2. Speak about any topic (e.g., "Tell me about your day")
+3. The AI responds and asks follow-up questions
+4. If you make a mistake, you'll get a correction in Spanish at the end of the turn
+5. Adjust speech speed with the slider at the bottom
+6. Say "goodbye" or tap **End** when done
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `VITE_GROQ_API_KEY` | Groq API key for LLaMA 3.3 |
+| `VITE_CARTESIA_API_KEY` | Cartesia API key for TTS |
+
+## Requirements
+
+- Modern browser with WebGPU support (Chrome, Edge, Safari)
+- Microphone permission
+- Internet connection (for LLM and TTS — STT runs offline)
