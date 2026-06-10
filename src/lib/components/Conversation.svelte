@@ -4,7 +4,7 @@
   import { get } from 'svelte/store'
   import type { Message } from '../types'
 
-  const { currentSession, status, speed, setStatus, addMessage, setError } = appStore
+  const { currentSession, status, speed, setStatus, addMessage, setError, error } = appStore
 
   let conversation: Message[] = []
   let transcript = ''
@@ -424,7 +424,7 @@ RULES:
 
   {#if $status === 'error' && $currentSession}
     <div class="bg-red-500 text-white px-4 py-3 text-center text-sm">
-      Error: {conversation[conversation.length - 1]?.content}
+      Error: {$error || 'Something went wrong'}
     </div>
   {/if}
 
