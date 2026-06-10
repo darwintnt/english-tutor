@@ -8,29 +8,35 @@
   let showHistory = false
 </script>
 
-<div class="home">
-  <div class="header">
-    <h1>English Coach</h1>
-    <p class="tagline">Your personal AI conversation tutor</p>
+<div class="flex flex-col items-center justify-center min-h-dvh p-8 gap-8">
+  <div class="text-center">
+    <h1 class="text-4xl font-bold text-white mb-2">English Coach</h1>
+    <p class="text-gray-400">Your personal AI conversation tutor</p>
   </div>
 
-  <div class="content">
-    <button class="start-btn" onclick={() => appStore.startSession()}>
-      <span class="icon">🎙️</span>
+  <div class="flex flex-col items-center gap-4 w-full max-w-xs">
+    <button
+      class="w-full py-5 px-8 text-xl font-semibold bg-gradient-to-br from-indigo-500 to-purple-500 text-white rounded-2xl flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+      onclick={() => appStore.startSession()}
+    >
+      <span>🎙️</span>
       Start Conversation
     </button>
 
     {#if $sessionHistory.length > 0}
-      <button class="secondary-btn" onclick={() => showHistory = !showHistory}>
+      <button
+        class="text-indigo-400 border border-indigo-400 px-6 py-3 rounded-xl text-sm"
+        onclick={() => showHistory = !showHistory}
+      >
         {showHistory ? 'Hide' : 'Show'} History ({$sessionHistory.length})
       </button>
 
       {#if showHistory}
-        <div class="history">
+        <div class="w-full space-y-2">
           {#each $sessionHistory as session}
-            <div class="history-item">
-              <span class="date">{new Date(session.startTime).toLocaleDateString()}</span>
-              <span class="stats">{session.messages.length} messages · {session.corrections.length} corrections</span>
+            <div class="flex justify-between items-center p-3 rounded-lg bg-white/5 text-sm">
+              <span class="text-white">{new Date(session.startTime).toLocaleDateString()}</span>
+              <span class="text-gray-500">{session.messages.length} messages · {session.corrections.length} corrections</span>
             </div>
           {/each}
         </div>
@@ -38,13 +44,12 @@
     {/if}
   </div>
 
-  <div class="speed-control">
-    <label for="speed">Speech Speed</label>
-    <div class="speed-buttons">
+  <div class="fixed bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+    <label class="text-xs text-gray-500 uppercase tracking-wider">Speech Speed</label>
+    <div class="flex gap-1 bg-white/10 p-1 rounded-xl">
       {#each SPEEDS as s}
         <button
-          class="speed-btn"
-          class:active={$speed === s}
+          class="px-3 py-2 text-sm rounded-lg transition-all {$speed === s ? 'bg-indigo-500 text-white' : 'text-gray-400'}"
           onclick={() => speed.set(s as Speed)}
         >
           {SPEED_LABELS[s]}
@@ -53,134 +58,3 @@
     </div>
   </div>
 </div>
-
-<style>
-  .home {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100dvh;
-    padding: 2rem;
-    gap: 2rem;
-  }
-
-  .header {
-    text-align: center;
-  }
-
-  h1 {
-    font-size: 2.5rem;
-    margin: 0;
-    color: #fff;
-  }
-
-  .tagline {
-    color: #888;
-    margin: 0.5rem 0 0;
-  }
-
-  .content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    width: 100%;
-    max-width: 300px;
-  }
-
-  .start-btn {
-    width: 100%;
-    padding: 1.25rem 2rem;
-    font-size: 1.25rem;
-    font-weight: 600;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-    border: none;
-    border-radius: 1rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-
-  .start-btn:active {
-    transform: scale(0.98);
-  }
-
-  .secondary-btn {
-    background: transparent;
-    color: #6366f1;
-    border: 1px solid #6366f1;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.75rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-  }
-
-  .history {
-    width: 100%;
-    margin-top: 0.5rem;
-  }
-
-  .history-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.75rem;
-    background: rgba(255,255,255,0.05);
-    border-radius: 0.5rem;
-    margin-bottom: 0.5rem;
-    font-size: 0.85rem;
-  }
-
-  .date { color: #fff; }
-  .stats { color: #888; }
-
-  .speed-control {
-    position: fixed;
-    bottom: 2rem;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .speed-control label {
-    font-size: 0.75rem;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .speed-buttons {
-    display: flex;
-    gap: 0.25rem;
-    background: rgba(255,255,255,0.1);
-    padding: 0.25rem;
-    border-radius: 0.75rem;
-  }
-
-  .speed-btn {
-    padding: 0.5rem 0.75rem;
-    background: transparent;
-    border: none;
-    color: #888;
-    font-size: 0.8rem;
-    cursor: pointer;
-    border-radius: 0.5rem;
-    transition: all 0.2s;
-  }
-
-  .speed-btn.active {
-    background: #6366f1;
-    color: white;
-  }
-
-  .icon {
-    font-size: 1.5rem;
-  }
-</style>

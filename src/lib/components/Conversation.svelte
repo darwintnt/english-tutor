@@ -15,9 +15,12 @@
   let silenceTimeout: ReturnType<typeof setTimeout> | null = null
   let audioChunks: Blob[] = []
   let audioElements: HTMLAudioElement[] = []
+  let isProcessingTurn = false
+  let micStream: MediaStream | null = null
+  let currentAudio: HTMLAudioElement | null = null
 
-  const SILENCE_THRESHOLD = 2000 // ms
-  const MAX_RECORDING_TIME = 30000 // 30s max
+  const SILENCE_THRESHOLD = 2000
+  const MAX_RECORDING_TIME = 30000
 
   $: conversation = $currentSession?.messages ?? []
 
@@ -31,14 +34,14 @@
 
   async function initAudio() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
       audioContext = new AudioContext()
       analyser = audioContext.createAnalyser()
-      const source = audioContext.createMediaStreamSource(stream)
+      const source = audioContext.createMediaStreamSource(micStream)
       source.connect(analyser)
       analyser.fftSize = 256
 
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      mediaRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm' })
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunks.push(e.data)
       }
@@ -52,18 +55,16 @@
   }
 
   function startListening() {
-    if (!mediaRecorder) return
+    if (!mediaRecorder || isProcessingTurn || isRecording) return
     audioChunks = []
     isRecording = true
     setStatus('listening')
     mediaRecorder.start(100)
 
-    // Auto-stop after max recording time
     setTimeout(() => {
       if (isRecording) stopListening()
     }, MAX_RECORDING_TIME)
 
-    // Monitor for silence
     monitorSilence()
   }
 
@@ -72,7 +73,9 @@
     isRecording = false
     if (silenceTimeout) clearTimeout(silenceTimeout)
     if (animationFrame) cancelAnimationFrame(animationFrame)
-    mediaRecorder.stop()
+    if (mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop()
+    }
     setStatus('processing')
   }
 
@@ -96,15 +99,18 @@
   }
 
   async function processAudio() {
+    if (isProcessingTurn) return
     if (audioChunks.length === 0) {
+      isProcessingTurn = false
       startListening()
       return
     }
 
+    isProcessingTurn = true
+
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
 
     try {
-      // Load Whisper model
       const { pipeline, env } = await import('@huggingface/transformers')
       env.allowLocalModels = false
       env.useBrowserCache = true
@@ -113,14 +119,12 @@
         device: 'webgpu',
       })
 
-      // Decode WebM to PCM
       const arrayBuffer = await audioBlob.arrayBuffer()
       const audioCtx = new AudioContext({ sampleRate: 16000 })
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
       const audioData = audioBuffer.getChannelData(0)
       audioCtx.close()
 
-      // Transcribe
       const result = await transcriber(audioData, {
         task: 'transcribe',
         language: 'english'
@@ -129,6 +133,7 @@
       transcript = result.text.trim()
 
       if (!transcript) {
+        isProcessingTurn = false
         startListening()
         return
       }
@@ -139,6 +144,7 @@
     } catch (err) {
       console.error('STT error:', err)
       addMessage({ role: 'assistant', content: "I didn't catch that. Could you repeat?" })
+      isProcessingTurn = false
       startListening()
     }
   }
@@ -149,6 +155,7 @@
     if (!apiKey) {
       setError('Groq API key not configured. Add VITE_GROQ_API_KEY to your .env file.')
       setStatus('error')
+      isProcessingTurn = false
       return
     }
 
@@ -158,7 +165,6 @@
         content: m.content
       }))
 
-      // Add system prompt with correction instruction
       const systemPrompt = `You are a friendly English conversation tutor. Your task:
 1. Have a natural conversation in English with the user
 2. At the END of your response, if you notice any grammar, vocabulary, or pronunciation errors, include a correction in Spanish
@@ -195,21 +201,18 @@
 
       addMessage({ role: 'assistant', content: assistantMessage })
 
-      // Check for correction and extract it
       const correctionMatch = assistantMessage.match(/Corrección:.*?(?=\n\n|$)/is)
       if (correctionMatch) {
-        const correction = correctionMatch[0]
-        // We could parse and store the correction here
-        console.log('Correction detected:', correction)
+        console.log('Correction detected:', correctionMatch[0])
       }
 
-      // Convert to speech and play
       await playTTS(assistantMessage)
 
     } catch (err) {
       console.error('LLM error:', err)
       setError(err instanceof Error ? err.message : 'Failed to get response from AI')
       setStatus('error')
+      isProcessingTurn = false
     }
   }
 
@@ -218,6 +221,7 @@
 
     if (!apiKey) {
       console.warn('Cartesia API key not configured')
+      isProcessingTurn = false
       return
     }
 
@@ -256,25 +260,29 @@
       const arrayBuffer = await response.arrayBuffer()
       const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' })
       const audioUrl = URL.createObjectURL(audioBlob)
-      const audio = new Audio(audioUrl)
-      audio.playbackRate = $speed
+      currentAudio = new Audio(audioUrl)
+      currentAudio.playbackRate = $speed
 
-      audio.onended = () => {
+      currentAudio.onended = () => {
         URL.revokeObjectURL(audioUrl)
+        currentAudio = null
+        isProcessingTurn = false
         startListening()
       }
 
-      audio.onerror = (e) => {
+      currentAudio.onerror = (e) => {
         console.error('Audio playback error:', e)
         URL.revokeObjectURL(audioUrl)
+        currentAudio = null
+        isProcessingTurn = false
         startListening()
       }
 
-      await audio.play()
+      await currentAudio.play()
 
     } catch (err) {
       console.error('TTS error:', err)
-      // Fallback: just show text, no audio
+      isProcessingTurn = false
       startListening()
     }
   }
@@ -284,8 +292,19 @@
     if (audioContext) audioContext.close()
     if (animationFrame) cancelAnimationFrame(animationFrame)
     if (silenceTimeout) clearTimeout(silenceTimeout)
+    if (micStream) {
+      micStream.getTracks().forEach(track => track.stop())
+      micStream = null
+    }
+    if (currentAudio) {
+      currentAudio.pause()
+      currentAudio.src = ''
+      currentAudio = null
+    }
     audioElements.forEach(a => a.pause())
     audioElements = []
+    isRecording = false
+    isProcessingTurn = false
   }
 
   function endConversation() {
@@ -304,161 +323,52 @@
   }
 </script>
 
-<div class="conversation">
-  <header>
-    <button class="back-btn" onclick={endConversation}>End</button>
-    <span class="status" class:visible={$status !== 'idle'}>{getStatusText($status)}</span>
-    <div class="spacer"></div>
+<div class="flex flex-col h-dvh bg-[#1a1a2e]">
+  <header class="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))]">
+    <button
+      class="bg-white/10 text-red-400 px-4 py-2 rounded-lg text-sm"
+      onclick={endConversation}
+    >
+      End
+    </button>
+    <span class="text-sm text-indigo-400 {$status !== 'idle' ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300">
+      {getStatusText($status)}
+    </span>
+    <div class="w-[60px]"></div>
   </header>
 
-  <div class="messages">
+  <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
     {#each conversation as msg, i}
-      <div class="message {msg.role}">
-        <div class="bubble">{msg.content}</div>
+      <div class="max-w-[85%] animate-[fadeIn_0.3s_ease] {msg.role === 'user' ? 'self-end' : 'self-start'}">
+        <div class="p-4 rounded-2xl leading-relaxed {msg.role === 'user' ? 'bg-indigo-500 text-white rounded-br-sm' : 'bg-white/10 text-white rounded-bl-sm'}">
+          {msg.content}
+        </div>
         {#if msg.role === 'user' && i > 0}
-          <div class="transcript">"{msg.content}"</div>
+          <p class="text-xs text-gray-500 italic mt-1 px-2">"{msg.content}"</p>
         {/if}
       </div>
     {/each}
   </div>
 
   {#if $status === 'error' && $currentSession}
-    <div class="error-banner">
+    <div class="bg-red-500 text-white px-4 py-3 text-center text-sm">
       Error: {conversation[conversation.length - 1]?.content}
     </div>
   {/if}
 
-  <div class="controls">
-    <div class="waveform" class:active={$status === 'listening'}>
+  <div class="p-8 pb-[max(2rem,env(safe-area-inset-bottom))] flex justify-center">
+    <div class="flex items-center gap-1 h-10">
       {#each Array(5) as _, i}
-        <div class="bar" style="animation-delay: {i * 0.1}s"></div>
+        <div
+          class="w-1 h-2 bg-indigo-500 rounded-sm {$status === 'listening' ? 'animate-[wave_0.6s_ease-in-out_infinite]' : ''}"
+          style="animation-delay: {i * 0.1}s"
+        ></div>
       {/each}
     </div>
   </div>
 </div>
 
 <style>
-  .conversation {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-    background: #1a1a2e;
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1rem;
-    padding-top: max(1rem, env(safe-area-inset-top));
-  }
-
-  .back-btn {
-    background: rgba(255,255,255,0.1);
-    border: none;
-    color: #ef4444;
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-  }
-
-  .status {
-    font-size: 0.85rem;
-    color: #6366f1;
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-
-  .status.visible {
-    opacity: 1;
-  }
-
-  .spacer {
-    width: 60px;
-  }
-
-  .messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .message {
-    max-width: 85%;
-    animation: fadeIn 0.3s ease;
-  }
-
-  .message.user {
-    align-self: flex-end;
-  }
-
-  .message.assistant {
-    align-self: flex-start;
-  }
-
-  .bubble {
-    padding: 1rem;
-    border-radius: 1rem;
-    line-height: 1.5;
-  }
-
-  .user .bubble {
-    background: #6366f1;
-    color: white;
-    border-bottom-right-radius: 0.25rem;
-  }
-
-  .assistant .bubble {
-    background: rgba(255,255,255,0.1);
-    color: #fff;
-    border-bottom-left-radius: 0.25rem;
-  }
-
-  .transcript {
-    font-size: 0.75rem;
-    color: #666;
-    font-style: italic;
-    margin-top: 0.25rem;
-    padding: 0 0.5rem;
-  }
-
-  .error-banner {
-    background: #ef4444;
-    color: white;
-    padding: 0.75rem;
-    text-align: center;
-    font-size: 0.85rem;
-  }
-
-  .controls {
-    padding: 2rem;
-    padding-bottom: max(2rem, env(safe-area-inset-bottom));
-    display: flex;
-    justify-content: center;
-  }
-
-  .waveform {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    height: 40px;
-  }
-
-  .bar {
-    width: 4px;
-    height: 8px;
-    background: #6366f1;
-    border-radius: 2px;
-  }
-
-  .waveform.active .bar {
-    animation: wave 0.6s ease-in-out infinite;
-  }
-
   @keyframes wave {
     0%, 100% { height: 8px; }
     50% { height: 32px; }
