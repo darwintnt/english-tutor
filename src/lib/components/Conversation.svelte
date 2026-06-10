@@ -19,6 +19,8 @@
   let micStream: MediaStream | null = null
   let currentAudio: HTMLAudioElement | null = null
   let messagesContainer: HTMLDivElement | null = null
+  let audioUnlocked = false
+  let showAudioUnlockOverlay = false
 
   const SILENCE_THRESHOLD = 2000
   const MAX_RECORDING_TIME = 30000
@@ -39,6 +41,25 @@
   onDestroy(() => {
     cleanup()
   })
+
+  // Unlock audio context on first user interaction (required for iOS)
+  async function unlockAudio() {
+    if (audioUnlocked) return
+    try {
+      const ctx = new AudioContext()
+      const buffer = ctx.createBuffer(1, 1, 22050)
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+      source.connect(ctx.destination)
+      source.start(0)
+      ctx.close()
+      audioUnlocked = true
+      showAudioUnlockOverlay = false
+      console.log('Audio unlocked for iOS')
+    } catch (err) {
+      console.error('Failed to unlock audio:', err)
+    }
+  }
 
   async function initAudio() {
     try {
@@ -277,6 +298,13 @@ RULES:
       return
     }
 
+    // Check if audio is unlocked on iOS
+    if (!audioUnlocked) {
+      showAudioUnlockOverlay = true
+      isProcessingTurn = false
+      return
+    }
+
     try {
       setStatus('speaking')
 
@@ -416,6 +444,25 @@ RULES:
       {/each}
     </div>
   </div>
+
+  <!-- iOS audio unlock overlay -->
+  {#if showAudioUnlockOverlay}
+    <div
+      class="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50"
+      onclick={unlockAudio}
+      onkeydown={unlockAudio}
+      role="button"
+      tabindex="0"
+    >
+      <div class="text-6xl mb-4">🔊</div>
+      <div class="text-white text-lg text-center px-8 mb-4">
+        Tap anywhere to enable audio
+      </div>
+      <div class="text-gray-400 text-sm text-center px-8">
+        iOS requires user interaction to play sound
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
