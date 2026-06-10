@@ -138,65 +138,31 @@
     }
 
     try {
-      const { pipeline, env } = await import('@huggingface/transformers')
-      env.allowLocalModels = false
-      env.useBrowserCache = true
-
-      const transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-base', {
-        device: 'webgpu',
-      })
-
-      const arrayBuffer = await audioBlob.arrayBuffer()
-      console.log('ArrayBuffer:', arrayBuffer.byteLength, 'bytes')
-
-      // Try to decode audio - if this fails on iOS, catch and try alternative
-      let audioData: Float32Array
-
-      try {
-        const audioCtx = new AudioContext({ sampleRate: 16000 })
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0))
-        audioData = audioBuffer.getChannelData(0)
-        console.log('Decoded audio:', audioBuffer.duration, 's, samples:', audioData.length, 'at', audioBuffer.sampleRate, 'Hz')
-        audioCtx.close()
-      } catch (decodeErr) {
-        console.error('decodeAudioData at 16kHz failed:', decodeErr)
-        // Try with browser's default sample rate first, then we can resample
-        try {
-          const audioCtx2 = new AudioContext()
-          const audioBuffer = await audioCtx2.decodeAudioData(arrayBuffer.slice(0))
-          console.log('Decoded at default', audioBuffer.sampleRate, 'Hz, duration:', audioBuffer.duration)
-          
-          // If sample rate is very different, we need to resample
-          if (Math.abs(audioBuffer.sampleRate - 16000) > 1000) {
-            console.log('Need to resample from', audioBuffer.sampleRate, 'to 16000')
-            // Create offline context for resampling
-            const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * 16000, 16000)
-            const bufferSource = offlineCtx.createBufferSource()
-            bufferSource.buffer = audioBuffer
-            bufferSource.connect(offlineCtx.destination)
-            bufferSource.start()
-            const resampledBuffer = await offlineCtx.startRendering()
-            audioData = resampledBuffer.getChannelData(0)
-          } else {
-            audioData = audioBuffer.getChannelData(0)
-          }
-          audioCtx2.close()
-        } catch {
-          console.error('All audio decode attempts failed')
-          isProcessingTurn = false
-          setTimeout(() => {
-            if (get(status) !== 'idle') startListening()
-          }, 1000)
-          return
-        }
+      // Use Groq's Whisper API for STT - more reliable on iOS
+      const apiKey = import.meta.env.VITE_GROQ_API_KEY
+      if (!apiKey) {
+        throw new Error('Groq API key not configured')
       }
 
-      const result = await transcriber(audioData, {
-        task: 'transcribe',
-        language: 'english'
-      }) as { text: string }
+      const formData = new FormData()
+      formData.append('file', audioBlob, 'audio.webm')
+      formData.append('model', 'whisper-large-v3')
 
-      transcript = result.text.trim()
+      const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: formData
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error?.message || 'Whisper API error')
+      }
+
+      const data = await response.json()
+      transcript = data.text?.trim() || ''
       console.log('Transcript:', transcript)
 
       if (!transcript) {
@@ -211,6 +177,7 @@
     } catch (err) {
       console.error('STT error:', err)
       isProcessingTurn = false
+      setError(err instanceof Error ? err.message : 'STT failed')
       setTimeout(() => {
         const currentStatus = get(status)
         if (currentStatus !== 'idle') {
