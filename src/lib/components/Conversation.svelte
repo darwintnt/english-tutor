@@ -19,9 +19,17 @@
   let isPlayingTTS = false
   let isRecording = false
   let sessionActive = false
+  let showDebug = false
+  let logs: { time: string; level: 'info' | 'error' | 'warn'; msg: string }[] = []
 
   // Detect iOS to show TTS play button instead of auto-play
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
+
+  function log(level: 'info' | 'error' | 'warn', msg: string) {
+    const time = new Date().toLocaleTimeString('en-GB', { hour12: false })
+    logs = [...logs.slice(-99), { time, level, msg }]
+    if (!isIOS) console.log(`[${level.toUpperCase()}] ${msg}`)
+  }
 
   $: conversation = $currentSession?.messages ?? []
 
@@ -64,7 +72,7 @@
         if (e.data.size > 0) audioChunks.push(e.data)
       }
       mediaRecorder.onstop = processAudio
-
+      log('info', 'Mic ready, session started')
       sessionActive = true
       setStatus('idle')
     } catch (err) {
@@ -88,12 +96,14 @@
     audioChunks = []
     isRecording = true
     setStatus('listening')
+    log('info', 'Recording started')
     mediaRecorder.start(100)
   }
 
   function stopRecording() {
     if (!isRecording || !mediaRecorder) return
     isRecording = false
+    log('info', 'Recording stopped')
     if (mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop()
     }
@@ -111,8 +121,10 @@
     isProcessingTurn = true
 
     const audioBlob = new Blob(audioChunks)
+    log('info', `Audio blob: ${audioBlob.size} bytes`)
 
     if (audioBlob.size < 1000) {
+      log('warn', 'Audio too small, ignoring')
       isProcessingTurn = false
       setStatus('idle')
       return
@@ -122,6 +134,7 @@
       const apiKey = import.meta.env.VITE_GROQ_API_KEY
       if (!apiKey) throw new Error('Groq API key not configured')
 
+      log('info', 'Sending to Whisper...')
       const formData = new FormData()
       formData.append('file', audioBlob, 'audio.mp4')
       formData.append('model', 'whisper-large-v3')
@@ -140,18 +153,21 @@
       const data = await response.json()
       const transcript = data.text?.trim() || ''
       usageStore.trackWhisper()
+      log('info', `Whisper result: "${transcript}"`)
 
       if (!transcript) {
+        log('warn', 'Empty transcript, returning to idle')
         isProcessingTurn = false
         setStatus('idle')
         return
       }
 
       addMessage({ role: 'user', content: transcript })
+      log('info', 'Calling LLM...')
       await sendToLLM(transcript)
 
     } catch (err) {
-      console.error('STT error:', err)
+      log('error', `STT error: ${err instanceof Error ? err.message : String(err)}`)
       isProcessingTurn = false
       setError(err instanceof Error ? err.message : 'STT failed')
       setStatus('error')
@@ -162,6 +178,7 @@
   async function sendToLLM(userText: string) {
     const apiKey = import.meta.env.VITE_GROQ_API_KEY
     if (!apiKey) {
+      log('error', 'Groq API key not configured')
       setError('Add VITE_GROQ_API_KEY to your .env file')
       setStatus('error')
       isProcessingTurn = false
@@ -181,6 +198,7 @@ RULES:
 - If no errors, don't mention it.
 - If user says goodbye, respond with a short farewell.`
 
+      log('info', 'Sending to LLM...')
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -207,15 +225,17 @@ RULES:
       const data = await response.json()
       const assistantMessage = data.choices[0]?.message?.content ?? "I'm not sure how to respond."
       usageStore.trackLLM()
+      log('info', `LLM response: "${assistantMessage.substring(0, 50)}..."`)
 
       addMessage({ role: 'assistant', content: assistantMessage })
+      log('info', 'Generating TTS...')
       await playTTS(assistantMessage)
 
     } catch (err) {
-      console.error('LLM error:', err)
-      setError(err instanceof Error ? err.message : 'AI error')
-      setStatus('error')
+      log('error', `LLM error: ${err instanceof Error ? err.message : String(err)}`)
       isProcessingTurn = false
+      setError(err instanceof Error ? err.message : 'STT failed')
+      setStatus('error')
       setTimeout(() => setStatus('idle'), 2000)
     }
   }
@@ -231,7 +251,9 @@ RULES:
     try {
       setStatus('speaking')
       usageStore.trackTTS()
+      log('info', 'Generating TTS audio...')
       const { audioUrl } = await generateTTS(text, apiKey, 'groq')
+      log('info', 'TTS audio ready')
 
       if (isIOS) {
         pendingTTS = { text, audioUrl }
@@ -242,6 +264,7 @@ RULES:
 
       currentAudio = new Audio(audioUrl)
       currentAudio.playbackRate = $speed
+      log('info', 'Playing audio...')
 
       currentAudio.onended = () => {
         revokeTTSUrl(audioUrl)
@@ -263,8 +286,19 @@ RULES:
 
     } catch (err) {
       console.error('TTS error:', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('rate_limit') || msg.includes('429')) {
+        // Try to extract wait time from Groq error message
+        const waitMatch = msg.match(/try again in (\d+m)?(\d+s)?/)
+        const waitTime = waitMatch
+          ? waitMatch[0].replace('try again in ', '')
+          : 'quota exhausted'
+        setError(`Groq TTS limit reached. Try again in ${waitTime}`)
+      } else {
+        setError('TTS failed. Check debug logs.')
+      }
+      setStatus('error')
       isProcessingTurn = false
-      setStatus('idle')
     }
   }
 
@@ -332,8 +366,39 @@ RULES:
       End
     </button>
     <span class="text-sm text-indigo-400 capitalize">{$status}</span>
-    <div class="w-[60px]"></div>
+    {#if isIOS}
+      <button
+        class="bg-white/10 text-gray-400 px-4 py-2 rounded-lg text-sm"
+        onclick={() => showDebug = !showDebug}
+      >
+        {showDebug ? 'Hide' : 'Debug'}
+      </button>
+    {:else}
+      <div class="w-[60px]"></div>
+    {/if}
   </header>
+
+  <!-- Debug panel (iOS only) -->
+  {#if isIOS && showDebug}
+    <div class="bg-black/50 border-b border-white/10 p-2 max-h-40 overflow-y-auto">
+      <div class="flex justify-between items-center mb-1">
+        <span class="text-xs text-gray-500">Logs</span>
+        <button class="text-xs text-gray-500" onclick={() => logs = []}>Clear</button>
+      </div>
+      <div class="space-y-0.5">
+        {#each logs as l}
+          <div class="text-xs font-mono">
+            <span class="text-gray-500">{l.time}</span>
+            <span class="mx-1 {l.level === 'error' ? 'text-red-400' : l.level === 'warn' ? 'text-yellow-400' : 'text-gray-300'}">[{l.level}]</span>
+            <span class="text-gray-300">{l.msg}</span>
+          </div>
+        {/each}
+        {#if logs.length === 0}
+          <div class="text-xs text-gray-600 italic">No logs yet</div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 
   <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4" bind:this={messagesContainer}>
     {#each conversation as msg, i}
