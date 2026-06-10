@@ -19,8 +19,11 @@
   let micStream: MediaStream | null = null
   let currentAudio: HTMLAudioElement | null = null
   let messagesContainer: HTMLDivElement | null = null
-  let audioUnlocked = false
-  let showAudioUnlockOverlay = false
+  let pendingTTS: { text: string; audioUrl: string } | null = null
+  let isPlayingTTS = false
+
+  // Detect iOS to show TTS play button instead of auto-play
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
 
   const SILENCE_THRESHOLD = 2000
   const MAX_RECORDING_TIME = 30000
@@ -41,25 +44,6 @@
   onDestroy(() => {
     cleanup()
   })
-
-  // Unlock audio context on first user interaction (required for iOS)
-  async function unlockAudio() {
-    if (audioUnlocked) return
-    try {
-      const ctx = new AudioContext()
-      const buffer = ctx.createBuffer(1, 1, 22050)
-      const source = ctx.createBufferSource()
-      source.buffer = buffer
-      source.connect(ctx.destination)
-      source.start(0)
-      ctx.close()
-      audioUnlocked = true
-      showAudioUnlockOverlay = false
-      console.log('Audio unlocked for iOS')
-    } catch (err) {
-      console.error('Failed to unlock audio:', err)
-    }
-  }
 
   async function initAudio() {
     try {
@@ -298,13 +282,6 @@ RULES:
       return
     }
 
-    // Check if audio is unlocked on iOS
-    if (!audioUnlocked) {
-      showAudioUnlockOverlay = true
-      isProcessingTurn = false
-      return
-    }
-
     try {
       setStatus('speaking')
 
@@ -340,6 +317,16 @@ RULES:
       const arrayBuffer = await response.arrayBuffer()
       const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' })
       const audioUrl = URL.createObjectURL(audioBlob)
+
+      if (isIOS) {
+        // On iOS, store audio and let user tap to play
+        pendingTTS = { text, audioUrl }
+        isProcessingTurn = false
+        startListening()
+        return
+      }
+
+      // Desktop: auto-play
       currentAudio = new Audio(audioUrl)
       currentAudio.playbackRate = $speed
 
@@ -365,6 +352,35 @@ RULES:
       isProcessingTurn = false
       startListening()
     }
+  }
+
+  async function playPendingTTS() {
+    if (!pendingTTS || isPlayingTTS) return
+    isPlayingTTS = true
+    setStatus('speaking')
+
+    currentAudio = new Audio(pendingTTS.audioUrl)
+    currentAudio.playbackRate = $speed
+
+    currentAudio.onended = () => {
+      URL.revokeObjectURL(pendingTTS.audioUrl)
+      pendingTTS = null
+      currentAudio = null
+      isPlayingTTS = false
+      isProcessingTurn = false
+      startListening()
+    }
+
+    currentAudio.onerror = () => {
+      URL.revokeObjectURL(pendingTTS.audioUrl)
+      pendingTTS = null
+      currentAudio = null
+      isPlayingTTS = false
+      isProcessingTurn = false
+      startListening()
+    }
+
+    await currentAudio.play()
   }
 
   function cleanup() {
@@ -434,6 +450,19 @@ RULES:
     </div>
   {/if}
 
+  <!-- iOS TTS play button -->
+  {#if isIOS && pendingTTS}
+    <div class="px-4 py-3">
+      <button
+        class="w-full flex items-center justify-center gap-3 py-4 bg-indigo-500 text-white rounded-2xl active:scale-[0.98] transition-transform"
+        onclick={playPendingTTS}
+      >
+        <span class="text-2xl">🔊</span>
+        <span class="font-semibold">Play Response</span>
+      </button>
+    </div>
+  {/if}
+
   <div class="p-8 pb-[max(2rem,env(safe-area-inset-bottom))] flex justify-center">
     <div class="flex items-center gap-1 h-10">
       {#each Array(5) as _, i}
@@ -444,25 +473,6 @@ RULES:
       {/each}
     </div>
   </div>
-
-  <!-- iOS audio unlock overlay -->
-  {#if showAudioUnlockOverlay}
-    <div
-      class="fixed inset-0 bg-black/80 flex flex-col items-center justify-center z-50"
-      onclick={unlockAudio}
-      onkeydown={unlockAudio}
-      role="button"
-      tabindex="0"
-    >
-      <div class="text-6xl mb-4">🔊</div>
-      <div class="text-white text-lg text-center px-8 mb-4">
-        Tap anywhere to enable audio
-      </div>
-      <div class="text-gray-400 text-sm text-center px-8">
-        iOS requires user interaction to play sound
-      </div>
-    </div>
-  {/if}
 </div>
 
 <style>
