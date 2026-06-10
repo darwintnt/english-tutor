@@ -25,8 +25,8 @@
   // Detect iOS to show TTS play button instead of auto-play
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
 
-  const SILENCE_THRESHOLD = 2000
-  const MAX_RECORDING_TIME = 30000
+  const SILENCE_THRESHOLD = 1500
+  const MAX_RECORDING_TIME = 20000
 
   $: conversation = $currentSession?.messages ?? []
 
@@ -91,6 +91,7 @@
 
   function startListening() {
     if (!mediaRecorder || isProcessingTurn || isRecording) return
+    clearWatchdog()
     audioChunks = []
     isRecording = true
     setStatus('listening')
@@ -115,6 +116,7 @@
   }
 
   let lastSoundTime = Date.now()
+  let silenceHistory: number[] = []
 
   function monitorSilence() {
     if (!analyser || !isRecording) return
@@ -123,8 +125,15 @@
     analyser.getByteFrequencyData(dataArray)
     const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
 
-    if (average > 10) {
+    // Keep rolling history of last 5 readings
+    silenceHistory.push(average)
+    if (silenceHistory.length > 5) silenceHistory.shift()
+
+    const recentAverage = silenceHistory.reduce((a, b) => a + b, 0) / silenceHistory.length
+
+    if (recentAverage > 15) {
       lastSoundTime = Date.now()
+      silenceHistory = []
     } else if (Date.now() - lastSoundTime > SILENCE_THRESHOLD && isRecording) {
       stopListening()
       return
@@ -133,8 +142,30 @@
     animationFrame = requestAnimationFrame(monitorSilence)
   }
 
+  // Watchdog: if stuck in processing for >15s, reset to listening
+  let watchdogTimeout: ReturnType<typeof setTimeout> | null = null
+
+  function resetWatchdog() {
+    if (watchdogTimeout) clearTimeout(watchdogTimeout)
+    watchdogTimeout = setTimeout(() => {
+      if ($status === 'processing' && isProcessingTurn) {
+        console.warn('Watchdog: stuck in processing, resetting...')
+        isProcessingTurn = false
+        startListening()
+      }
+    }, 15000)
+  }
+
+  function clearWatchdog() {
+    if (watchdogTimeout) {
+      clearTimeout(watchdogTimeout)
+      watchdogTimeout = null
+    }
+  }
+
   async function processAudio() {
     if (isProcessingTurn) return
+    resetWatchdog()
     if (audioChunks.length === 0) {
       isProcessingTurn = false
       startListening()
@@ -192,6 +223,7 @@
 
     } catch (err) {
       console.error('STT error:', err)
+      clearWatchdog()
       isProcessingTurn = false
       setError(err instanceof Error ? err.message : 'STT failed')
       setTimeout(() => {
@@ -267,6 +299,7 @@ RULES:
 
     } catch (err) {
       console.error('LLM error:', err)
+      clearWatchdog()
       setError(err instanceof Error ? err.message : 'Failed to get response from AI')
       setStatus('error')
       isProcessingTurn = false
@@ -334,6 +367,7 @@ RULES:
         URL.revokeObjectURL(audioUrl)
         currentAudio = null
         isProcessingTurn = false
+        clearWatchdog()
         startListening()
       }
 
@@ -342,6 +376,7 @@ RULES:
         URL.revokeObjectURL(audioUrl)
         currentAudio = null
         isProcessingTurn = false
+        clearWatchdog()
         startListening()
       }
 
@@ -349,6 +384,7 @@ RULES:
 
     } catch (err) {
       console.error('TTS error:', err)
+      clearWatchdog()
       isProcessingTurn = false
       startListening()
     }
@@ -368,6 +404,7 @@ RULES:
       currentAudio = null
       isPlayingTTS = false
       isProcessingTurn = false
+      clearWatchdog()
       startListening()
     }
 
@@ -377,6 +414,7 @@ RULES:
       currentAudio = null
       isPlayingTTS = false
       isProcessingTurn = false
+      clearWatchdog()
       startListening()
     }
 
@@ -384,6 +422,7 @@ RULES:
   }
 
   function cleanup() {
+    clearWatchdog()
     if (mediaRecorder) mediaRecorder.stop()
     if (audioContext) audioContext.close()
     if (animationFrame) cancelAnimationFrame(animationFrame)
