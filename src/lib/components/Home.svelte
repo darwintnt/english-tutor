@@ -4,6 +4,7 @@
   import type { Speed } from '../types'
   import { SPEEDS, SPEED_LABELS } from '../types'
   import { checkApiHealth, type ApiStatus } from '../services/api-health'
+  import { usageStore } from '../stores/usage'
 
   const { speed, sessionHistory } = appStore
 
@@ -28,6 +29,22 @@
 
   function isAnyError(status: ApiStatus) {
     return status.groq === 'error'
+  }
+
+  // Get the most critical usage (lowest percentage remaining)
+  function getMostCriticalUsage(usage: typeof $usageStore) {
+    const items = [
+      { name: 'Whisper STT', used: usage.daily.whisper.used, max: usage.daily.whisper.max },
+      { name: 'LLaMA LLM', used: usage.daily.llm.used, max: usage.daily.llm.max },
+      { name: 'Orpheus TTS', used: usage.daily.tts.used, max: usage.daily.tts.max }
+    ]
+    return items.reduce((a, b) => (a.used / a.max > b.used / b.max ? a : b))
+  }
+
+  function getBarColor(pct: number) {
+    if (pct >= 90) return 'bg-red-500'
+    if (pct >= 80) return 'bg-yellow-500'
+    return 'bg-green-500'
   }
 </script>
 
@@ -55,6 +72,24 @@
       {/if}
     </div>
   </div>
+
+  <!-- Usage Bar -->
+  {#if $usageStore}
+    {@const critical = getMostCriticalUsage($usageStore)}
+    {@const pct = Math.round((critical.used / critical.max) * 100)}
+    <div class="w-full max-w-xs flex flex-col gap-1">
+      <div class="flex justify-between text-xs text-gray-400">
+        <span>{critical.name}</span>
+        <span>{critical.used} / {critical.max} ({pct}%)</span>
+      </div>
+      <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+        <div
+          class="h-full rounded-full transition-all duration-300 {getBarColor(pct)}"
+          style="width: {pct}%"
+        ></div>
+      </div>
+    </div>
+  {/if}
 
   <div class="flex flex-col items-center gap-4 w-full max-w-xs">
     <button

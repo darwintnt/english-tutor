@@ -4,6 +4,7 @@
   import { get } from 'svelte/store'
   import type { Message } from '../types'
   import { generateTTS, revokeTTSUrl } from '../services/tts'
+  import { usageStore } from '../stores/usage'
 
   const { currentSession, status, speed, setStatus, addMessage, setError, error } = appStore
 
@@ -138,6 +139,7 @@
 
       const data = await response.json()
       const transcript = data.text?.trim() || ''
+      usageStore.trackWhisper()
 
       if (!transcript) {
         isProcessingTurn = false
@@ -204,6 +206,7 @@ RULES:
 
       const data = await response.json()
       const assistantMessage = data.choices[0]?.message?.content ?? "I'm not sure how to respond."
+      usageStore.trackLLM()
 
       addMessage({ role: 'assistant', content: assistantMessage })
       await playTTS(assistantMessage)
@@ -227,6 +230,7 @@ RULES:
 
     try {
       setStatus('speaking')
+      usageStore.trackTTS()
       const { audioUrl } = await generateTTS(text, apiKey, 'groq')
 
       if (isIOS) {
