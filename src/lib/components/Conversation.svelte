@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount, onDestroy, afterUpdate } from 'svelte'
   import { appStore } from '../stores/app'
   import { get } from 'svelte/store'
   import type { Message } from '../types'
@@ -15,15 +15,22 @@
   let animationFrame: number | null = null
   let silenceTimeout: ReturnType<typeof setTimeout> | null = null
   let audioChunks: Blob[] = []
-  let audioElements: HTMLAudioElement[] = []
   let isProcessingTurn = false
   let micStream: MediaStream | null = null
   let currentAudio: HTMLAudioElement | null = null
+  let messagesContainer: HTMLDivElement | null = null
 
   const SILENCE_THRESHOLD = 2000
   const MAX_RECORDING_TIME = 30000
 
   $: conversation = $currentSession?.messages ?? []
+
+  // Auto-scroll to bottom when conversation updates
+  afterUpdate(() => {
+    if (messagesContainer) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight
+    }
+  })
 
   onMount(() => {
     initAudio()
@@ -42,7 +49,18 @@
       source.connect(analyser)
       analyser.fftSize = 256
 
-      mediaRecorder = new MediaRecorder(micStream)
+      // Use AAC format on iOS which is better supported
+      // iOS Safari supports audio/aac and audio/mp4
+      let mimeType = 'audio/aac'
+      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4'
+      } else if (!MediaRecorder.isTypeSupported('audio/aac')) {
+        mimeType = '' // let browser decide
+      }
+
+      mediaRecorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined)
+      console.log('MediaRecorder mimeType:', mediaRecorder.mimeType || 'browser default')
+
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunks.push(e.data)
       }
@@ -110,6 +128,14 @@
     isProcessingTurn = true
 
     const audioBlob = new Blob(audioChunks)
+    console.log('Audio blob:', audioBlob.size, 'bytes, type:', audioBlob.type || 'unknown')
+
+    if (audioBlob.size < 1000) {
+      console.warn('Audio blob too small, likely empty')
+      isProcessingTurn = false
+      startListening()
+      return
+    }
 
     try {
       const { pipeline, env } = await import('@huggingface/transformers')
@@ -121,10 +147,49 @@
       })
 
       const arrayBuffer = await audioBlob.arrayBuffer()
-      const audioCtx = new AudioContext({ sampleRate: 16000 })
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
-      const audioData = audioBuffer.getChannelData(0)
-      audioCtx.close()
+      console.log('ArrayBuffer:', arrayBuffer.byteLength, 'bytes')
+
+      // Try to decode audio - if this fails on iOS, catch and try alternative
+      let audioData: Float32Array
+
+      try {
+        const audioCtx = new AudioContext({ sampleRate: 16000 })
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0))
+        audioData = audioBuffer.getChannelData(0)
+        console.log('Decoded audio:', audioBuffer.duration, 's, samples:', audioData.length, 'at', audioBuffer.sampleRate, 'Hz')
+        audioCtx.close()
+      } catch (decodeErr) {
+        console.error('decodeAudioData at 16kHz failed:', decodeErr)
+        // Try with browser's default sample rate first, then we can resample
+        try {
+          const audioCtx2 = new AudioContext()
+          const audioBuffer = await audioCtx2.decodeAudioData(arrayBuffer.slice(0))
+          console.log('Decoded at default', audioBuffer.sampleRate, 'Hz, duration:', audioBuffer.duration)
+          
+          // If sample rate is very different, we need to resample
+          if (Math.abs(audioBuffer.sampleRate - 16000) > 1000) {
+            console.log('Need to resample from', audioBuffer.sampleRate, 'to 16000')
+            // Create offline context for resampling
+            const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * 16000, 16000)
+            const bufferSource = offlineCtx.createBufferSource()
+            bufferSource.buffer = audioBuffer
+            bufferSource.connect(offlineCtx.destination)
+            bufferSource.start()
+            const resampledBuffer = await offlineCtx.startRendering()
+            audioData = resampledBuffer.getChannelData(0)
+          } else {
+            audioData = audioBuffer.getChannelData(0)
+          }
+          audioCtx2.close()
+        } catch {
+          console.error('All audio decode attempts failed')
+          isProcessingTurn = false
+          setTimeout(() => {
+            if (get(status) !== 'idle') startListening()
+          }, 1000)
+          return
+        }
+      }
 
       const result = await transcriber(audioData, {
         task: 'transcribe',
@@ -132,6 +197,7 @@
       }) as { text: string }
 
       transcript = result.text.trim()
+      console.log('Transcript:', transcript)
 
       if (!transcript) {
         isProcessingTurn = false
@@ -145,7 +211,6 @@
     } catch (err) {
       console.error('STT error:', err)
       isProcessingTurn = false
-      // Add delay before retry to prevent tight loops on iOS
       setTimeout(() => {
         const currentStatus = get(status)
         if (currentStatus !== 'idle') {
@@ -172,13 +237,15 @@
         content: m.content
       }))
 
-      const systemPrompt = `You are a friendly English conversation tutor. Your task:
-1. Have a natural conversation in English with the user
-2. At the END of your response, if you notice any grammar, vocabulary, or pronunciation errors, include a correction in Spanish
-3. Format corrections like this: "Corrección: dijiste 'X' pero se dice 'Y'. Explicación: ..."
-4. If there are no obvious errors, don't mention it
-5. Keep responses conversational, ask follow-up questions
-6. If the user says goodbye or wants to end, say a nice goodbye`
+      const systemPrompt = `You are a friendly and concise English conversation tutor.
+
+RULES:
+- Keep responses SHORT — 1 to 3 sentences max. No long explanations.
+- Conversational tone, like a real person.
+- Ask ONE follow-up question at a time.
+- At the END of your response, if you notice grammar/vocabulary errors, add a correction in Spanish: "Corrección: dijiste 'X' pero se dice 'Y'."
+- If no errors, don't mention it.
+- If user says goodbye, respond with a short farewell.`
 
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -194,7 +261,7 @@
             { role: 'user', content: userText }
           ],
           temperature: 0.7,
-          max_tokens: 500
+          max_tokens: 250
         })
       })
 
@@ -308,8 +375,6 @@
       currentAudio.src = ''
       currentAudio = null
     }
-    audioElements.forEach(a => a.pause())
-    audioElements = []
     isRecording = false
     isProcessingTurn = false
   }
@@ -344,7 +409,7 @@
     <div class="w-[60px]"></div>
   </header>
 
-  <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+  <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4" bind:this={messagesContainer}>
     {#each conversation as msg, i}
       <div class="max-w-[85%] animate-[fadeIn_0.3s_ease] {msg.role === 'user' ? 'self-end' : 'self-start'}">
         <div class="p-4 rounded-2xl leading-relaxed {msg.role === 'user' ? 'bg-indigo-500 text-white rounded-br-sm' : 'bg-white/10 text-white rounded-bl-sm'}">
