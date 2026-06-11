@@ -108,7 +108,34 @@
     if (mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop()
     }
+    // On iOS, MediaRecorder needs to be recreated after stop() to capture data again
+    // Delay slightly to let onstop fire first
+    setTimeout(() => {
+      if (sessionActive) {
+        recreateMediaRecorder()
+      }
+    }, 100)
     setStatus('processing')
+  }
+
+  function recreateMediaRecorder() {
+    if (!micStream) return
+
+    let mimeType = 'audio/aac'
+    if (MediaRecorder.isTypeSupported('audio/mp4')) {
+      mimeType = 'audio/mp4'
+    } else if (!MediaRecorder.isTypeSupported('audio/aac')) {
+      mimeType = ''
+    }
+
+    mediaRecorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined)
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data)
+    }
+    mediaRecorder.onstop = processAudio
+
+    log('info', 'MediaRecorder recreated for iOS')
   }
 
   async function processAudio() {
