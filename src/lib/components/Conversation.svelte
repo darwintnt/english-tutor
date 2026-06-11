@@ -112,7 +112,11 @@
   }
 
   async function processAudio() {
-    if (!sessionActive) return
+    log('info', `processAudio: sessionActive=${sessionActive}, audioChunks=${audioChunks.length}`)
+    if (!sessionActive) {
+      log('warn', 'processAudio: sessionActive is false, returning')
+      return
+    }
     if (audioChunks.length === 0) {
       isProcessingTurn = false
       setStatus('idle')
