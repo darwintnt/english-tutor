@@ -10,10 +10,8 @@
   const { currentSession, status, speed, setStatus, addMessage, setError, error } = appStore
 
   let conversation: Message[] = []
-  let mediaRecorder: MediaRecorder | null = null
   let audioChunks: Blob[] = []
   let isProcessingTurn = false
-  let micStream: MediaStream | null = null
   let currentAudio: HTMLAudioElement | null = null
   let messagesContainer: HTMLDivElement | null = null
   let pendingTTS: { text: string; audioUrl: string } | null = null
@@ -42,44 +40,44 @@
   })
 
   onMount(() => {
-    initAudio()
+    // iOS Safari needs fresh getUserMedia for each recording
+    sessionActive = true
+    setStatus('idle')
   })
 
   onDestroy(() => {
     cleanup()
   })
 
-  async function initAudio() {
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1
-        }
-      })
-
-      let mimeType = 'audio/aac'
-      if (MediaRecorder.isTypeSupported('audio/mp4')) {
-        mimeType = 'audio/mp4'
-      } else if (!MediaRecorder.isTypeSupported('audio/aac')) {
-        mimeType = ''
+  async function initAudio(): Promise<MediaStream> {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1
       }
+    })
+    log('info', 'Mic stream acquired')
+    return stream
+  }
 
-      mediaRecorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined)
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunks.push(e.data)
-      }
-      mediaRecorder.onstop = processAudio
-      log('info', 'Mic ready, session started')
-      sessionActive = true
-      setStatus('idle')
-    } catch (err) {
-      setError('Microphone access denied.')
-      setStatus('error')
+  function createMediaRecorder(stream: MediaStream): MediaRecorder {
+    let mimeType = 'audio/aac'
+    if (MediaRecorder.isTypeSupported('audio/mp4')) {
+      mimeType = 'audio/mp4'
+    } else if (!MediaRecorder.isTypeSupported('audio/aac')) {
+      mimeType = ''
     }
+
+    const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data)
+    }
+    mr.onstop = processAudio
+
+    return mr
   }
 
   function toggleRecording() {
@@ -92,6 +90,8 @@
     }
   }
 
+  let mediaRecorder: MediaRecorder | null = null
+
   function stopRecording() {
     if (!isRecording || !mediaRecorder) return
     isRecording = false
@@ -102,38 +102,31 @@
     setStatus('processing')
   }
 
-  function createMediaRecorder(): MediaRecorder | null {
-    if (!micStream) return null
-
-    let mimeType = 'audio/aac'
-    if (MediaRecorder.isTypeSupported('audio/mp4')) {
-      mimeType = 'audio/mp4'
-    } else if (!MediaRecorder.isTypeSupported('audio/aac')) {
-      mimeType = ''
-    }
-
-    const mr = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined)
-
-    mr.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunks.push(e.data)
-    }
-    mr.onstop = processAudio
-
-    return mr
-  }
-
   function startRecording() {
-    if (!micStream || !sessionActive || isRecording) return
+    if (!sessionActive || isRecording) return
 
-    // Create fresh MediaRecorder each time to avoid iOS Safari bug
-    mediaRecorder = createMediaRecorder()
-    if (!mediaRecorder) return
-
+    // Reset chunks from previous attempts
     audioChunks = []
     isRecording = true
     setStatus('listening')
     log('info', 'Recording started')
-    mediaRecorder.start(0) // Use 0 interval for immediate data capture on iOS
+
+    // Get fresh mic stream each time to avoid iOS Safari bug
+    initAudio().then(stream => {
+      mediaRecorder = createMediaRecorder(stream)
+      mediaRecorder.start(100) // Collect data every 100ms
+
+      // Clean up stream when recording stops
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop())
+        processAudio()
+      }
+    }).catch(err => {
+      log('error', `Mic access denied: ${err}`)
+      isRecording = false
+      setError('Microphone access denied.')
+      setStatus('error')
+    })
   }
 
   async function processAudio() {
@@ -367,10 +360,7 @@ RULES:
     if (mediaRecorder) {
       mediaRecorder.onstop = null
       if (mediaRecorder.state !== 'inactive') mediaRecorder.stop()
-    }
-    if (micStream) {
-      micStream.getTracks().forEach(track => track.stop())
-      micStream = null
+      mediaRecorder = null
     }
     if (currentAudio) {
       currentAudio.pause()
