@@ -5,6 +5,7 @@
   import type { Message } from '../types'
   import { generateTTS, revokeTTSUrl } from '../services/tts'
   import { usageStore } from '../stores/usage'
+  import { API_CONFIG } from '../config/api'
 
   const { currentSession, status, speed, setStatus, addMessage, setError, error } = appStore
 
@@ -137,7 +138,7 @@
       log('info', 'Sending to Whisper...')
       const formData = new FormData()
       formData.append('file', audioBlob, 'audio.mp4')
-      formData.append('model', 'whisper-large-v3')
+      formData.append('model', API_CONFIG.whisperModel)
 
       const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
@@ -206,7 +207,7 @@ RULES:
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
+          model: API_CONFIG.llmModel,
           messages: [
             { role: 'system', content: systemPrompt },
             ...messages,
@@ -252,7 +253,7 @@ RULES:
       setStatus('speaking')
       usageStore.trackTTS()
       log('info', 'Generating TTS audio...')
-      const { audioUrl } = await generateTTS(text, apiKey, 'groq')
+      const { audioUrl } = await generateTTS(text)
       log('info', 'TTS audio ready')
 
       if (isIOS) {
