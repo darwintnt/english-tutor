@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate } from 'svelte'
   import { appStore } from '../stores/app'
-  import { get } from 'svelte/store'
   import type { Message } from '../types'
   import { generateTTS, revokeTTSUrl } from '../services/tts'
   import { usageStore } from '../stores/usage'
@@ -75,7 +74,6 @@
     mr.ondataavailable = (e) => {
       if (e.data.size > 0) audioChunks.push(e.data)
     }
-    mr.onstop = processAudio
 
     return mr
   }
