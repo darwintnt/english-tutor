@@ -92,15 +92,6 @@
     }
   }
 
-  function startRecording() {
-    if (!mediaRecorder || !sessionActive || isRecording) return
-    audioChunks = []
-    isRecording = true
-    setStatus('listening')
-    log('info', 'Recording started')
-    mediaRecorder.start(100)
-  }
-
   function stopRecording() {
     if (!isRecording || !mediaRecorder) return
     isRecording = false
@@ -108,18 +99,11 @@
     if (mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop()
     }
-    // On iOS, MediaRecorder needs to be recreated after stop() to capture data again
-    // Delay slightly to let onstop fire first
-    setTimeout(() => {
-      if (sessionActive) {
-        recreateMediaRecorder()
-      }
-    }, 100)
     setStatus('processing')
   }
 
-  function recreateMediaRecorder() {
-    if (!micStream) return
+  function createMediaRecorder(): MediaRecorder | null {
+    if (!micStream) return null
 
     let mimeType = 'audio/aac'
     if (MediaRecorder.isTypeSupported('audio/mp4')) {
@@ -128,14 +112,28 @@
       mimeType = ''
     }
 
-    mediaRecorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined)
+    const mr = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined)
 
-    mediaRecorder.ondataavailable = (e) => {
+    mr.ondataavailable = (e) => {
       if (e.data.size > 0) audioChunks.push(e.data)
     }
-    mediaRecorder.onstop = processAudio
+    mr.onstop = processAudio
 
-    log('info', 'MediaRecorder recreated for iOS')
+    return mr
+  }
+
+  function startRecording() {
+    if (!micStream || !sessionActive || isRecording) return
+
+    // Create fresh MediaRecorder each time to avoid iOS Safari bug
+    mediaRecorder = createMediaRecorder()
+    if (!mediaRecorder) return
+
+    audioChunks = []
+    isRecording = true
+    setStatus('listening')
+    log('info', 'Recording started')
+    mediaRecorder.start(0) // Use 0 interval for immediate data capture on iOS
   }
 
   async function processAudio() {
@@ -145,6 +143,7 @@
       return
     }
     if (audioChunks.length === 0) {
+      log('warn', 'processAudio: audioChunks is empty, returning')
       isProcessingTurn = false
       setStatus('idle')
       return
