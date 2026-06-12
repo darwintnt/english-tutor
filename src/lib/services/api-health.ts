@@ -13,7 +13,7 @@ export async function checkApiHealth(): Promise<ApiStatus> {
     try {
       const response = await fetch('https://api.groq.com/openai/v1/models', {
         method: 'GET',
-        headers: { 'Authorization': `Bearer ${groqKey}` }
+        headers: { Authorization: `Bearer ${groqKey}` },
       })
       status.groq = response.ok ? 'ok' : 'error'
     } catch {

@@ -50,10 +50,10 @@ function createAuthStore() {
         // Store hash to allow re-auth without exposing PIN
         localStorage.setItem(STORED_PIN_HASH_KEY, inputHash)
 
-        update(s => ({
+        update((s) => ({
           ...s,
           isAuthenticated: true,
-          sessionExpiry: expiry
+          sessionExpiry: expiry,
         }))
         return true
       }
@@ -76,7 +76,7 @@ function createAuthStore() {
     // Check if auth is configured
     isConfigured(): boolean {
       return !!configuredPinHash
-    }
+    },
   }
 }
 
@@ -89,7 +89,7 @@ function hashPinSync(pin: string): string {
 
   for (let i = 0; i < combined.length; i++) {
     const char = combined.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
+    hash = (hash << 5) - hash + char
     hash = hash & hash // Convert to 32bit integer
   }
 

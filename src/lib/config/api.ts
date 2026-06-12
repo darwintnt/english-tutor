@@ -17,7 +17,8 @@ export const API_CONFIG = {
   // TTS Voice ID per provider
   ttsVoice: {
     groq: (import.meta.env.VITE_GROQ_TTS_VOICE as string) || 'austin',
-    cartesia: (import.meta.env.VITE_CARTESIA_TTS_VOICE as string) || 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',
+    cartesia:
+      (import.meta.env.VITE_CARTESIA_TTS_VOICE as string) || 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',
     google: (import.meta.env.VITE_GOOGLE_TTS_VOICE as string) || 'en-US-Neural2-D',
   },
 

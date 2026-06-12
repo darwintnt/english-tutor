@@ -14,7 +14,7 @@ interface UsageStore {
 const DAILY_LIMITS = {
   whisper: 2000,
   llm: 1000,
-  tts: 100
+  tts: 100,
 }
 
 function createUsageStore() {
@@ -27,13 +27,24 @@ function createUsageStore() {
       const now = new Date()
       // Reset at midnight
       if (lastReset.toDateString() !== now.toDateString()) {
-        return { daily: { whisper: { used: 0, max: DAILY_LIMITS.whisper }, llm: { used: 0, max: DAILY_LIMITS.llm }, tts: { used: 0, max: DAILY_LIMITS.tts } }, lastReset: now }
+        return {
+          daily: {
+            whisper: { used: 0, max: DAILY_LIMITS.whisper },
+            llm: { used: 0, max: DAILY_LIMITS.llm },
+            tts: { used: 0, max: DAILY_LIMITS.tts },
+          },
+          lastReset: now,
+        }
       }
       return data
     }
     return {
-      daily: { whisper: { used: 0, max: DAILY_LIMITS.whisper }, llm: { used: 0, max: DAILY_LIMITS.llm }, tts: { used: 0, max: DAILY_LIMITS.tts } },
-      lastReset: new Date()
+      daily: {
+        whisper: { used: 0, max: DAILY_LIMITS.whisper },
+        llm: { used: 0, max: DAILY_LIMITS.llm },
+        tts: { used: 0, max: DAILY_LIMITS.tts },
+      },
+      lastReset: new Date(),
     }
   }
 
@@ -46,29 +57,36 @@ function createUsageStore() {
 
   return {
     subscribe,
-    trackWhisper: () => update(u => {
-      u.daily.whisper.used++
-      save(u)
-      return u
-    }),
-    trackLLM: () => update(u => {
-      u.daily.llm.used++
-      save(u)
-      return u
-    }),
-    trackTTS: () => update(u => {
-      u.daily.tts.used++
-      save(u)
-      return u
-    }),
+    trackWhisper: () =>
+      update((u) => {
+        u.daily.whisper.used++
+        save(u)
+        return u
+      }),
+    trackLLM: () =>
+      update((u) => {
+        u.daily.llm.used++
+        save(u)
+        return u
+      }),
+    trackTTS: () =>
+      update((u) => {
+        u.daily.tts.used++
+        save(u)
+        return u
+      }),
     reset: () => {
       const now = new Date()
       const u: UsageStore = {
-        daily: { whisper: { used: 0, max: DAILY_LIMITS.whisper }, llm: { used: 0, max: DAILY_LIMITS.llm }, tts: { used: 0, max: DAILY_LIMITS.tts } },
-        lastReset: now
+        daily: {
+          whisper: { used: 0, max: DAILY_LIMITS.whisper },
+          llm: { used: 0, max: DAILY_LIMITS.llm },
+          tts: { used: 0, max: DAILY_LIMITS.tts },
+        },
+        lastReset: now,
       }
       save(u)
-    }
+    },
   }
 }
 

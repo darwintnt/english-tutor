@@ -15,10 +15,23 @@
     <div class="w-full max-w-md space-y-8">
       <!-- Header -->
       <div class="text-center space-y-2">
-        <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-zinc-900 border border-zinc-800 mb-4">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
+        <div
+          class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-zinc-900 border border-zinc-800 mb-4"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="text-emerald-500"
+          >
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+            <polyline points="22 4 12 14.01 9 11.01" />
           </svg>
         </div>
         <h1 class="text-2xl font-semibold tracking-tight">Session Complete</h1>
@@ -33,7 +46,13 @@
             <p class="text-xs text-zinc-600 mt-1">Messages</p>
           </div>
           <div class="text-center">
-            <p class="text-3xl font-semibold text-zinc-50">{corrections.length}</p>
+            <p
+              class="text-3xl font-semibold {corrections.length > 0
+                ? 'text-red-500'
+                : 'text-zinc-50'}"
+            >
+              {corrections.length}
+            </p>
             <p class="text-xs text-zinc-600 mt-1">Corrections</p>
           </div>
           <div class="text-center">
@@ -59,9 +78,22 @@
         </div>
       {:else}
         <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center">
-          <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/10 mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-500">
-              <polyline points="20 6 9 17 4 12"/>
+          <div
+            class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-500/10 mb-3"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="text-emerald-500"
+            >
+              <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
           <p class="text-sm text-emerald-500 font-medium">No corrections this time</p>

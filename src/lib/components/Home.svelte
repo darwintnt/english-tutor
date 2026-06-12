@@ -17,9 +17,12 @@
 
   function getStatusDot(status: ApiStatus['groq']) {
     switch (status) {
-      case 'ok': return 'bg-emerald-500'
-      case 'error': return 'bg-red-500'
-      default: return 'bg-yellow-500'
+      case 'ok':
+        return 'bg-emerald-500'
+      case 'error':
+        return 'bg-red-500'
+      default:
+        return 'bg-yellow-500'
     }
   }
 
@@ -35,7 +38,7 @@
     const items = [
       { name: 'Whisper STT', used: usage.daily.whisper.used, max: usage.daily.whisper.max },
       { name: 'LLaMA LLM', used: usage.daily.llm.used, max: usage.daily.llm.max },
-      { name: 'Orpheus TTS', used: usage.daily.tts.used, max: usage.daily.tts.max }
+      { name: 'Orpheus TTS', used: usage.daily.tts.used, max: usage.daily.tts.max },
     ]
     return items.reduce((a, b) => (a.used / a.max > b.used / b.max ? a : b))
   }
@@ -62,7 +65,13 @@
           <div class="w-2 h-2 rounded-full {getStatusDot(apiStatus.groq)}"></div>
           <span class="text-sm text-zinc-400">Groq API</span>
         </div>
-        <span class="text-xs {isAllOk(apiStatus) ? 'text-emerald-500' : isAnyError(apiStatus) ? 'text-red-500' : 'text-yellow-500'}">
+        <span
+          class="text-xs {isAllOk(apiStatus)
+            ? 'text-emerald-500'
+            : isAnyError(apiStatus)
+              ? 'text-red-500'
+              : 'text-yellow-500'}"
+        >
           {#if isAllOk(apiStatus)}
             Connected
           {:else if isAnyError(apiStatus)}
@@ -99,10 +108,20 @@
         onclick={() => appStore.startSession()}
         disabled={isAnyError(apiStatus)}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-          <line x1="12" x2="12" y1="19" y2="22"/>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+          <line x1="12" x2="12" y1="19" y2="22" />
         </svg>
         Start Conversation
       </button>
@@ -118,7 +137,7 @@
     {#if $sessionHistory.length > 0}
       <button
         class="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
-        onclick={() => showHistory = !showHistory}
+        onclick={() => (showHistory = !showHistory)}
       >
         {showHistory ? 'Hide' : 'Show'} History ({$sessionHistory.length})
       </button>
@@ -126,8 +145,12 @@
       {#if showHistory}
         <div class="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
           {#each $sessionHistory as session}
-            <div class="flex justify-between items-center py-2 border-b border-zinc-800 last:border-0">
-              <span class="text-sm text-zinc-300">{new Date(session.startTime).toLocaleDateString()}</span>
+            <div
+              class="flex justify-between items-center py-2 border-b border-zinc-800 last:border-0"
+            >
+              <span class="text-sm text-zinc-300"
+                >{new Date(session.startTime).toLocaleDateString()}</span
+              >
               <span class="text-xs text-zinc-600">{session.messages.length} msgs</span>
             </div>
           {/each}
@@ -143,7 +166,9 @@
       <div class="flex bg-zinc-900 border border-zinc-800 rounded-lg p-1">
         {#each SPEEDS as s}
           <button
-            class="flex-1 py-2.5 text-sm font-medium rounded-md transition-all {$speed === s ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-500 hover:text-zinc-300'}"
+            class="flex-1 py-2.5 text-sm font-medium rounded-md transition-all {$speed === s
+              ? 'bg-zinc-800 text-zinc-50'
+              : 'text-zinc-500 hover:text-zinc-300'}"
             onclick={() => speed.set(s as Speed)}
           >
             {SPEED_LABELS[s]}

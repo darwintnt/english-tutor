@@ -23,14 +23,14 @@ You speak → Groq Whisper (STT) → LLaMA 3.3 (Groq) → TTS (provider) → You
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Svelte + Vite + TypeScript + Tailwind CSS v4 |
-| STT | Whisper Large v3 via Groq API |
-| LLM | LLaMA 3.3 70B via Groq API |
-| TTS | Groq Orpheus / Cartesia Sonic 3.5 / Google Cloud TTS |
-| Auth | PIN code from env var with 1-hour session |
-| PWA | vite-plugin-pwa + Workbox |
+| Layer    | Technology                                           |
+| -------- | ---------------------------------------------------- |
+| Frontend | Svelte + Vite + TypeScript + Tailwind CSS v4         |
+| STT      | Whisper Large v3 via Groq API                        |
+| LLM      | LLaMA 3.3 70B via Groq API                           |
+| TTS      | Groq Orpheus / Cartesia Sonic 3.5 / Google Cloud TTS |
+| Auth     | PIN code from env var with 1-hour session            |
+| PWA      | vite-plugin-pwa + Workbox                            |
 
 ## Setup
 
@@ -133,26 +133,26 @@ vite.config.ts                    # Vite + PWA configuration
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_GROQ_API_KEY` | (required) | Groq API key |
-| `VITE_AUTH_PIN` | (required) | PIN code to access the app (min 4 digits) |
-| `VITE_LLM_MODEL` | `llama-3.3-70b-versatile` | Groq LLM model |
-| `VITE_WHISPER_MODEL` | `whisper-large-v3` | Whisper STT model |
-| `VITE_TTS_PROVIDER` | `groq` | TTS provider: `groq`, `cartesia`, or `google` |
-| `VITE_GROQ_TTS_VOICE` | `austin` | Groq TTS voice: `austin`, `troy`, `hannah` |
-| `VITE_GROQ_TTS_MODEL` | `canopylabs/orpheus-v1-english` | Groq TTS model |
-| `VITE_CARTESIA_TTS_VOICE` | `db6b0ed5-...` | Cartesia voice ID |
-| `VITE_GOOGLE_TTS_API_KEY` | (optional) | Google Cloud TTS API key |
-| `VITE_GOOGLE_TTS_VOICE` | `en-US-Neural2-D` | Google TTS voice name |
+| Variable                  | Default                         | Description                                   |
+| ------------------------- | ------------------------------- | --------------------------------------------- |
+| `VITE_GROQ_API_KEY`       | (required)                      | Groq API key                                  |
+| `VITE_AUTH_PIN`           | (required)                      | PIN code to access the app (min 4 digits)     |
+| `VITE_LLM_MODEL`          | `llama-3.3-70b-versatile`       | Groq LLM model                                |
+| `VITE_WHISPER_MODEL`      | `whisper-large-v3`              | Whisper STT model                             |
+| `VITE_TTS_PROVIDER`       | `groq`                          | TTS provider: `groq`, `cartesia`, or `google` |
+| `VITE_GROQ_TTS_VOICE`     | `austin`                        | Groq TTS voice: `austin`, `troy`, `hannah`    |
+| `VITE_GROQ_TTS_MODEL`     | `canopylabs/orpheus-v1-english` | Groq TTS model                                |
+| `VITE_CARTESIA_TTS_VOICE` | `db6b0ed5-...`                  | Cartesia voice ID                             |
+| `VITE_GOOGLE_TTS_API_KEY` | (optional)                      | Google Cloud TTS API key                      |
+| `VITE_GOOGLE_TTS_VOICE`   | `en-US-Neural2-D`               | Google TTS voice name                         |
 
 ## TTS Provider Comparison
 
-| Provider | Free Tier | Quality | Notes |
-|----------|-----------|---------|-------|
-| **Groq** | 100 req/day | Good | Fast, simple setup |
-| **Google Cloud** | 4M chars/month | Excellent | Neural voices, high volume |
-| **Cartesia** | Limited | Very Good | Good voices, limited free tier |
+| Provider         | Free Tier      | Quality   | Notes                          |
+| ---------------- | -------------- | --------- | ------------------------------ |
+| **Groq**         | 100 req/day    | Good      | Fast, simple setup             |
+| **Google Cloud** | 4M chars/month | Excellent | Neural voices, high volume     |
+| **Cartesia**     | Limited        | Very Good | Good voices, limited free tier |
 
 ## Requirements
 

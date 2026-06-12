@@ -15,7 +15,7 @@ function createAppStore() {
       startTime: Date.now(),
       messages: [],
       corrections: [],
-      topics: []
+      topics: [],
     }
     currentSession.set(session)
     screen.set('conversation')
@@ -23,9 +23,9 @@ function createAppStore() {
   }
 
   function endSession() {
-    currentSession.update(s => s ? { ...s, endTime: Date.now() } : null)
-    currentSession.update(s => {
-      if (s) sessionHistory.update(h => [s, ...h].slice(0, 10))
+    currentSession.update((s) => (s ? { ...s, endTime: Date.now() } : null))
+    currentSession.update((s) => {
+      if (s) sessionHistory.update((h) => [s, ...h].slice(0, 10))
       return s
     })
     screen.set('end')
@@ -39,35 +39,41 @@ function createAppStore() {
   }
 
   function addMessage(message: Omit<Message, 'id' | 'timestamp'>) {
-    currentSession.update(s => {
+    currentSession.update((s) => {
       if (!s) return s
       return {
         ...s,
-        messages: [...s.messages, {
-          ...message,
-          id: crypto.randomUUID(),
-          timestamp: Date.now()
-        }]
+        messages: [
+          ...s.messages,
+          {
+            ...message,
+            id: crypto.randomUUID(),
+            timestamp: Date.now(),
+          },
+        ],
       }
     })
   }
 
   function addCorrection(correction: Omit<Correction, 'id' | 'timestamp'>) {
-    currentSession.update(s => {
+    currentSession.update((s) => {
       if (!s) return s
       return {
         ...s,
-        corrections: [...s.corrections, {
-          ...correction,
-          id: crypto.randomUUID(),
-          timestamp: Date.now()
-        }]
+        corrections: [
+          ...s.corrections,
+          {
+            ...correction,
+            id: crypto.randomUUID(),
+            timestamp: Date.now(),
+          },
+        ],
       }
     })
   }
 
   function addTopic(topic: string) {
-    currentSession.update(s => {
+    currentSession.update((s) => {
       if (!s) return s
       if (s.topics.includes(topic)) return s
       return { ...s, topics: [...s.topics, topic] }
@@ -88,7 +94,7 @@ function createAppStore() {
     addCorrection,
     addTopic,
     setStatus: status.set,
-    setError: error.set
+    setError: error.set,
   }
 }
 

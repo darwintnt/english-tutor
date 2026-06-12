@@ -20,9 +20,7 @@ export const TTS_VOICES: Record<TTSProvider, TTSVoice[]> = {
     { id: 'troy', name: 'Troy (Male)' },
     { id: 'hannah', name: 'Hannah (Female)' },
   ],
-  cartesia: [
-    { id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', name: 'Aristocrat' },
-  ]
+  cartesia: [{ id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', name: 'Aristocrat' }],
 }
 
 export function getDefaultVoice(provider: TTSProvider): TTSVoice {

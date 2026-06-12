@@ -6,7 +6,8 @@
   import { usageStore } from '../stores/usage'
   import { API_CONFIG } from '../config/api'
 
-  const { currentSession, status, speed, setStatus, addMessage, setError, error } = appStore
+  const { currentSession, status, speed, setStatus, addMessage, setError, error, addCorrection } =
+    appStore
 
   let conversation: Message[] = []
   let audioChunks: Blob[] = []
@@ -51,8 +52,8 @@
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-        channelCount: 1
-      }
+        channelCount: 1,
+      },
     })
     log('info', 'Mic stream acquired')
     return stream
@@ -105,20 +106,22 @@
     setStatus('listening')
     log('info', 'Recording started')
 
-    initAudio().then(stream => {
-      mediaRecorder = createMediaRecorder(stream)
-      mediaRecorder.start(100)
+    initAudio()
+      .then((stream) => {
+        mediaRecorder = createMediaRecorder(stream)
+        mediaRecorder.start(100)
 
-      mediaRecorder.onstop = () => {
-        stream.getTracks().forEach(track => track.stop())
-        processAudio()
-      }
-    }).catch(err => {
-      log('error', `Mic access denied: ${err}`)
-      isRecording = false
-      setError('Microphone access denied.')
-      setStatus('error')
-    })
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach((track) => track.stop())
+          processAudio()
+        }
+      })
+      .catch((err) => {
+        log('error', `Mic access denied: ${err}`)
+        isRecording = false
+        setError('Microphone access denied.')
+        setStatus('error')
+      })
   }
 
   async function processAudio() {
@@ -157,8 +160,8 @@
 
       const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-        body: formData
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: formData,
       })
 
       if (!response.ok) {
@@ -181,7 +184,6 @@
       addMessage({ role: 'user', content: transcript })
       log('info', 'Calling LLM...')
       await sendToLLM(transcript)
-
     } catch (err) {
       log('error', `STT error: ${err instanceof Error ? err.message : String(err)}`)
       isProcessingTurn = false
@@ -202,7 +204,7 @@
     }
 
     try {
-      const messages = conversation.map(m => ({ role: m.role, content: m.content }))
+      const messages = conversation.map((m) => ({ role: m.role, content: m.content }))
 
       const systemPrompt = `You are a friendly and concise English conversation tutor.
 
@@ -218,19 +220,19 @@ RULES:
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           model: API_CONFIG.llmModel,
           messages: [
             { role: 'system', content: systemPrompt },
             ...messages,
-            { role: 'user', content: userText }
+            { role: 'user', content: userText },
           ],
           temperature: 0.7,
-          max_tokens: 250
-        })
+          max_tokens: 250,
+        }),
       })
 
       if (!response.ok) {
@@ -244,9 +246,9 @@ RULES:
       log('info', `LLM response: "${assistantMessage.substring(0, 50)}..."`)
 
       addMessage({ role: 'assistant', content: assistantMessage })
+      parseCorrections(assistantMessage)
       log('info', 'Generating TTS...')
       await playTTS(assistantMessage)
-
     } catch (err) {
       log('error', `LLM error: ${err instanceof Error ? err.message : String(err)}`)
       isProcessingTurn = false
@@ -299,15 +301,12 @@ RULES:
       }
 
       await currentAudio.play()
-
     } catch (err) {
       console.error('TTS error:', err)
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('rate_limit') || msg.includes('429')) {
         const waitMatch = msg.match(/try again in (\d+m)?(\d+s)?/)
-        const waitTime = waitMatch
-          ? waitMatch[0].replace('try again in ', '')
-          : 'quota exhausted'
+        const waitTime = waitMatch ? waitMatch[0].replace('try again in ', '') : 'quota exhausted'
         setError(`Groq TTS limit reached. Try again in ${waitTime}`)
       } else {
         setError('TTS failed. Check debug logs.')
@@ -368,20 +367,45 @@ RULES:
     appStore.endSession()
   }
 
+  function parseCorrections(text: string) {
+    // Pattern: "Corrección: dijiste 'X' pero se dice 'Y'."
+    const pattern =
+      /Corrección:\s*dijiste\s*['"]([^'"]+)['"]\s*pero\s*se\s*dice\s*['"]([^'"]+)['"]/gi
+    let match
+    while ((match = pattern.exec(text)) !== null) {
+      const original = match[1].trim()
+      const corrected = match[2].trim()
+      if (original && corrected) {
+        addCorrection({
+          original,
+          corrected,
+          explanation: `Corrección: "${original}" → "${corrected}"`,
+        })
+      }
+    }
+  }
+
   function getStatusText(s: typeof $status) {
     switch (s) {
-      case 'listening': return 'Recording...'
-      case 'processing': return 'Thinking...'
-      case 'speaking': return 'Speaking...'
-      case 'error': return 'Error'
-      default: return 'Ready'
+      case 'listening':
+        return 'Recording...'
+      case 'processing':
+        return 'Thinking...'
+      case 'speaking':
+        return 'Speaking...'
+      case 'error':
+        return 'Error'
+      default:
+        return 'Ready'
     }
   }
 </script>
 
 <div class="flex flex-col h-dvh bg-zinc-950 text-zinc-50">
   <!-- Header -->
-  <header class="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-zinc-900">
+  <header
+    class="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-zinc-900"
+  >
     <button
       class="h-9 px-4 inline-flex items-center justify-center rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
       onclick={endConversation}
@@ -394,7 +418,7 @@ RULES:
     {#if isIOS}
       <button
         class="h-9 px-4 inline-flex items-center justify-center rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-        onclick={() => showDebug = !showDebug}
+        onclick={() => (showDebug = !showDebug)}
       >
         {showDebug ? 'Hide' : 'Debug'}
       </button>
@@ -408,13 +432,21 @@ RULES:
     <div class="bg-zinc-900 border-b border-zinc-800 p-3 max-h-36 overflow-y-auto">
       <div class="flex justify-between items-center mb-2">
         <span class="text-xs text-zinc-600 uppercase tracking-wider">Logs</span>
-        <button class="text-xs text-zinc-500 hover:text-zinc-300" onclick={() => logs = []}>Clear</button>
+        <button class="text-xs text-zinc-500 hover:text-zinc-300" onclick={() => (logs = [])}
+          >Clear</button
+        >
       </div>
       <div class="space-y-0.5 font-mono text-xs">
         {#each logs as l}
           <div class="flex gap-2">
             <span class="text-zinc-600">{l.time}</span>
-            <span class="{l.level === 'error' ? 'text-red-500' : l.level === 'warn' ? 'text-yellow-500' : 'text-zinc-400'}">[{l.level}]</span>
+            <span
+              class={l.level === 'error'
+                ? 'text-red-500'
+                : l.level === 'warn'
+                  ? 'text-yellow-500'
+                  : 'text-zinc-400'}>[{l.level}]</span
+            >
             <span class="text-zinc-300">{l.msg}</span>
           </div>
         {/each}
@@ -429,11 +461,24 @@ RULES:
   <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3" bind:this={messagesContainer}>
     {#if conversation.length === 0}
       <div class="flex-1 flex flex-col items-center justify-center text-center p-8">
-        <div class="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-4">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-600">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-            <line x1="12" x2="12" y1="19" y2="22"/>
+        <div
+          class="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-4"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="text-zinc-600"
+          >
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" x2="12" y1="19" y2="22" />
           </svg>
         </div>
         <p class="text-zinc-500 text-sm">Tap the microphone to start speaking</p>
@@ -441,8 +486,17 @@ RULES:
     {/if}
 
     {#each conversation as msg}
-      <div class="max-w-[80%] animate-in fade-in-0 slide-in-from-bottom-2 duration-200 {msg.role === 'user' ? 'self-end' : 'self-start'}">
-        <div class="px-4 py-3 rounded-2xl {msg.role === 'user' ? 'bg-zinc-800 text-zinc-100 rounded-br-md' : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'}">
+      <div
+        class="max-w-[80%] animate-in fade-in-0 slide-in-from-bottom-2 duration-200 {msg.role ===
+        'user'
+          ? 'self-end'
+          : 'self-start'}"
+      >
+        <div
+          class="px-4 py-3 rounded-2xl {msg.role === 'user'
+            ? 'bg-zinc-800 text-zinc-100 rounded-br-md'
+            : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'}"
+        >
           <p class="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
         </div>
       </div>
@@ -463,9 +517,19 @@ RULES:
         class="w-full h-12 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-50 font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
         onclick={playPendingTTS}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
         </svg>
         Play Response
       </button>
@@ -491,20 +555,44 @@ RULES:
       <!-- Mic Button -->
       <button
         class="w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200
-          {$status === 'listening' ? 'bg-red-500 hover:bg-red-600 scale-105' : 'bg-zinc-800 hover:bg-zinc-700 border border-zinc-700'}
-          {($status === 'processing' || $status === 'speaking') ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'}"
+          {$status === 'listening'
+          ? 'bg-red-500 hover:bg-red-600 scale-105'
+          : 'bg-zinc-800 hover:bg-zinc-700 border border-zinc-700'}
+          {$status === 'processing' || $status === 'speaking'
+          ? 'opacity-40 cursor-not-allowed'
+          : 'active:scale-95'}"
         onclick={toggleRecording}
         disabled={$status === 'processing' || $status === 'speaking'}
       >
         {#if $status === 'listening'}
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="6" y="6" width="12" height="12" rx="2" />
           </svg>
         {:else}
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-            <line x1="12" x2="12" y1="19" y2="22"/>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" x2="12" y1="19" y2="22" />
           </svg>
         {/if}
       </button>
@@ -523,16 +611,26 @@ RULES:
 
 <style>
   @keyframes fade-in-0 {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   @keyframes slide-in-from-bottom-2 {
-    from { transform: translateY(8px); }
-    to { transform: translateY(0); }
+    from {
+      transform: translateY(8px);
+    }
+    to {
+      transform: translateY(0);
+    }
   }
 
   .animate-in {
-    animation: fade-in-0 200ms ease-out, slide-in-from-bottom-2 200ms ease-out;
+    animation:
+      fade-in-0 200ms ease-out,
+      slide-in-from-bottom-2 200ms ease-out;
   }
 </style>

@@ -24,20 +24,20 @@ export default defineConfig({
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'maskable'
-          }
-        ]
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
@@ -49,12 +49,12 @@ export default defineConfig({
               cacheName: 'groq-api-cache',
               expiration: {
                 maxEntries: 10,
-                maxAgeSeconds: 60 * 60
-              }
-            }
-          }
-        ]
-      }
-    })
+                maxAgeSeconds: 60 * 60,
+              },
+            },
+          },
+        ],
+      },
+    }),
   ],
 })

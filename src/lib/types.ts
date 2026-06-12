@@ -35,11 +35,11 @@ export interface AppState {
 }
 
 export const SPEEDS = [0.75, 1.0, 1.25, 1.5] as const
-export type Speed = typeof SPEEDS[number]
+export type Speed = (typeof SPEEDS)[number]
 
 export const SPEED_LABELS: Record<Speed, string> = {
   0.75: 'Slow',
   1.0: 'Normal',
   1.25: 'Fast',
-  1.5: 'Extra Fast'
+  1.5: 'Extra Fast',
 }
