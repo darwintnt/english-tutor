@@ -15,11 +15,11 @@
     apiStatus = await checkApiHealth()
   })
 
-  function getStatusColor(status: ApiStatus['groq']) {
+  function getStatusDot(status: ApiStatus['groq']) {
     switch (status) {
-      case 'ok': return 'bg-green-500'
+      case 'ok': return 'bg-emerald-500'
       case 'error': return 'bg-red-500'
-      default: return 'bg-yellow-500 animate-pulse'
+      default: return 'bg-yellow-500'
     }
   }
 
@@ -31,7 +31,6 @@
     return status.groq === 'error'
   }
 
-  // Get the most critical usage (lowest percentage remaining)
   function getMostCriticalUsage(usage: typeof $usageStore) {
     const items = [
       { name: 'Whisper STT', used: usage.daily.whisper.used, max: usage.daily.whisper.max },
@@ -41,104 +40,116 @@
     return items.reduce((a, b) => (a.used / a.max > b.used / b.max ? a : b))
   }
 
-  function getBarColor(pct: number) {
+  function getProgressColor(pct: number) {
     if (pct >= 90) return 'bg-red-500'
     if (pct >= 80) return 'bg-yellow-500'
-    return 'bg-green-500'
+    return 'bg-emerald-500'
   }
 </script>
 
-<div class="flex flex-col items-center justify-center min-h-dvh p-8 gap-6">
-  <div class="text-center">
-    <h1 class="text-4xl font-bold text-white mb-2">English Coach</h1>
-    <p class="text-gray-400">Your personal AI conversation tutor</p>
-  </div>
+<div class="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col">
+  <main class="flex-1 flex flex-col items-center justify-center p-6 gap-8">
+    <!-- Header -->
+    <div class="text-center space-y-1">
+      <h1 class="text-2xl font-semibold tracking-tight">English Coach</h1>
+      <p class="text-sm text-zinc-500">Your personal AI conversation tutor</p>
+    </div>
 
-  <!-- API Status Indicator -->
-  <div class="flex flex-col items-center gap-2 p-4 bg-white/5 rounded-2xl">
-    <div class="flex items-center gap-4">
-      <div class="flex items-center gap-2">
-        <div class="w-3 h-3 rounded-full {getStatusColor(apiStatus.groq)}"></div>
-        <span class="text-xs text-gray-400">Groq (LLM + STT + TTS)</span>
+    <!-- API Status Card -->
+    <div class="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full {getStatusDot(apiStatus.groq)}"></div>
+          <span class="text-sm text-zinc-400">Groq API</span>
+        </div>
+        <span class="text-xs {isAllOk(apiStatus) ? 'text-emerald-500' : isAnyError(apiStatus) ? 'text-red-500' : 'text-yellow-500'}">
+          {#if isAllOk(apiStatus)}
+            Connected
+          {:else if isAnyError(apiStatus)}
+            Check API key
+          {:else}
+            Checking...
+          {/if}
+        </span>
       </div>
     </div>
-    <div class="text-xs {isAllOk(apiStatus) ? 'text-green-400' : isAnyError(apiStatus) ? 'text-red-400' : 'text-yellow-400'}">
-      {#if isAllOk(apiStatus)}
-        ✓ Connected
-      {:else if isAnyError(apiStatus)}
-        ⚠ Check API key
-      {:else}
-        Checking...
-      {/if}
-    </div>
-  </div>
 
-  <!-- Usage Bar -->
-  {#if $usageStore}
-    {@const critical = getMostCriticalUsage($usageStore)}
-    {@const pct = Math.round((critical.used / critical.max) * 100)}
-    <div class="w-full max-w-xs flex flex-col gap-1">
-      <div class="flex justify-between text-xs text-gray-400">
-        <span>{critical.name}</span>
-        <span>{critical.used} / {critical.max} ({pct}%)</span>
+    <!-- Usage Progress -->
+    {#if $usageStore}
+      {@const critical = getMostCriticalUsage($usageStore)}
+      {@const pct = Math.round((critical.used / critical.max) * 100)}
+      <div class="w-full max-w-sm space-y-2">
+        <div class="flex justify-between text-xs text-zinc-500">
+          <span>{critical.name}</span>
+          <span>{critical.used}/{critical.max}</span>
+        </div>
+        <div class="h-2 bg-zinc-800 rounded-full overflow-hidden">
+          <div
+            class="h-full rounded-full transition-all duration-500 {getProgressColor(pct)}"
+            style="width: {pct}%"
+          ></div>
+        </div>
       </div>
-      <div class="h-2 bg-white/10 rounded-full overflow-hidden">
-        <div
-          class="h-full rounded-full transition-all duration-300 {getBarColor(pct)}"
-          style="width: {pct}%"
-        ></div>
-      </div>
-    </div>
-  {/if}
-
-  <div class="flex flex-col items-center gap-4 w-full max-w-xs">
-    <button
-      class="w-full py-5 px-8 text-xl font-semibold bg-gradient-to-br from-indigo-500 to-purple-500 text-white rounded-2xl flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-      onclick={() => appStore.startSession()}
-      disabled={isAnyError(apiStatus)}
-    >
-      <span>🎙️</span>
-      Start Conversation
-    </button>
-
-    {#if isAnyError(apiStatus)}
-      <p class="text-xs text-red-400 text-center px-4">
-        Configure your API keys in the .env file to start chatting
-      </p>
     {/if}
 
+    <!-- Start Button -->
+    <div class="w-full max-w-sm space-y-3">
+      <button
+        class="w-full h-14 bg-zinc-50 text-zinc-900 font-medium rounded-xl flex items-center justify-center gap-2 hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:ring-offset-2 focus:ring-offset-zinc-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+        onclick={() => appStore.startSession()}
+        disabled={isAnyError(apiStatus)}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" x2="12" y1="19" y2="22"/>
+        </svg>
+        Start Conversation
+      </button>
+
+      {#if isAnyError(apiStatus)}
+        <p class="text-xs text-red-500 text-center">
+          Configure your API keys in the .env file to start
+        </p>
+      {/if}
+    </div>
+
+    <!-- History Toggle -->
     {#if $sessionHistory.length > 0}
       <button
-        class="text-indigo-400 border border-indigo-400 px-6 py-3 rounded-xl text-sm"
+        class="text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
         onclick={() => showHistory = !showHistory}
       >
         {showHistory ? 'Hide' : 'Show'} History ({$sessionHistory.length})
       </button>
 
       {#if showHistory}
-        <div class="w-full space-y-2">
+        <div class="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
           {#each $sessionHistory as session}
-            <div class="flex justify-between items-center p-3 rounded-lg bg-white/5 text-sm">
-              <span class="text-white">{new Date(session.startTime).toLocaleDateString()}</span>
-              <span class="text-gray-500">{session.messages.length} messages · {session.corrections.length} corrections</span>
+            <div class="flex justify-between items-center py-2 border-b border-zinc-800 last:border-0">
+              <span class="text-sm text-zinc-300">{new Date(session.startTime).toLocaleDateString()}</span>
+              <span class="text-xs text-zinc-600">{session.messages.length} msgs</span>
             </div>
           {/each}
         </div>
       {/if}
     {/if}
-  </div>
+  </main>
 
-  <div class="fixed bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
-    <label class="text-xs text-gray-500 uppercase tracking-wider">Speech Speed</label>
-    <div class="flex gap-1 bg-white/10 p-1 rounded-xl">
-      {#each SPEEDS as s}
-        <button
-          class="px-3 py-2 text-sm rounded-lg transition-all {$speed === s ? 'bg-indigo-500 text-white' : 'text-gray-400'}"
-          onclick={() => speed.set(s as Speed)}
-        >
-          {SPEED_LABELS[s]}
-        </button>
-      {/each}
+  <!-- Speed Selector - Bottom Fixed -->
+  <footer class="p-6 border-t border-zinc-900">
+    <div class="max-w-sm mx-auto space-y-3">
+      <p class="text-xs text-zinc-600 uppercase tracking-wider text-center">Speech Speed</p>
+      <div class="flex bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+        {#each SPEEDS as s}
+          <button
+            class="flex-1 py-2.5 text-sm font-medium rounded-md transition-all {$speed === s ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-500 hover:text-zinc-300'}"
+            onclick={() => speed.set(s as Speed)}
+          >
+            {SPEED_LABELS[s]}
+          </button>
+        {/each}
+      </div>
     </div>
-  </div>
+  </footer>
 </div>

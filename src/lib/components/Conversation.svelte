@@ -20,7 +20,6 @@
   let showDebug = false
   let logs: { time: string; level: 'info' | 'error' | 'warn'; msg: string }[] = []
 
-  // Detect iOS to show TTS play button instead of auto-play
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
 
   function log(level: 'info' | 'error' | 'warn', msg: string) {
@@ -31,7 +30,6 @@
 
   $: conversation = $currentSession?.messages ?? []
 
-  // Auto-scroll to bottom when conversation updates
   afterUpdate(() => {
     if (messagesContainer) {
       messagesContainer.scrollTop = messagesContainer.scrollHeight
@@ -39,7 +37,6 @@
   })
 
   onMount(() => {
-    // iOS Safari needs fresh getUserMedia for each recording
     sessionActive = true
     setStatus('idle')
   })
@@ -103,18 +100,15 @@
   function startRecording() {
     if (!sessionActive || isRecording) return
 
-    // Reset chunks from previous attempts
     audioChunks = []
     isRecording = true
     setStatus('listening')
     log('info', 'Recording started')
 
-    // Get fresh mic stream each time to avoid iOS Safari bug
     initAudio().then(stream => {
       mediaRecorder = createMediaRecorder(stream)
-      mediaRecorder.start(100) // Collect data every 100ms
+      mediaRecorder.start(100)
 
-      // Clean up stream when recording stops
       mediaRecorder.onstop = () => {
         stream.getTracks().forEach(track => track.stop())
         processAudio()
@@ -310,7 +304,6 @@ RULES:
       console.error('TTS error:', err)
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes('rate_limit') || msg.includes('429')) {
-        // Try to extract wait time from Groq error message
         const waitMatch = msg.match(/try again in (\d+m)?(\d+s)?/)
         const waitTime = waitMatch
           ? waitMatch[0].replace('try again in ', '')
@@ -374,20 +367,33 @@ RULES:
     cleanup()
     appStore.endSession()
   }
+
+  function getStatusText(s: typeof $status) {
+    switch (s) {
+      case 'listening': return 'Recording...'
+      case 'processing': return 'Thinking...'
+      case 'speaking': return 'Speaking...'
+      case 'error': return 'Error'
+      default: return 'Ready'
+    }
+  }
 </script>
 
-<div class="flex flex-col h-dvh bg-[#1a1a2e]">
-  <header class="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))]">
+<div class="flex flex-col h-dvh bg-zinc-950 text-zinc-50">
+  <!-- Header -->
+  <header class="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-zinc-900">
     <button
-      class="bg-white/10 text-red-400 px-4 py-2 rounded-lg text-sm"
+      class="h-9 px-4 inline-flex items-center justify-center rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
       onclick={endConversation}
     >
       End
     </button>
-    <span class="text-sm text-indigo-400 capitalize">{$status}</span>
+
+    <span class="text-sm font-medium text-zinc-500">{getStatusText($status)}</span>
+
     {#if isIOS}
       <button
-        class="bg-white/10 text-gray-400 px-4 py-2 rounded-lg text-sm"
+        class="h-9 px-4 inline-flex items-center justify-center rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
         onclick={() => showDebug = !showDebug}
       >
         {showDebug ? 'Hide' : 'Debug'}
@@ -397,107 +403,136 @@ RULES:
     {/if}
   </header>
 
-  <!-- Debug panel (iOS only) -->
+  <!-- Debug panel -->
   {#if isIOS && showDebug}
-    <div class="bg-black/50 border-b border-white/10 p-2 max-h-40 overflow-y-auto">
-      <div class="flex justify-between items-center mb-1">
-        <span class="text-xs text-gray-500">Logs</span>
-        <button class="text-xs text-gray-500" onclick={() => logs = []}>Clear</button>
+    <div class="bg-zinc-900 border-b border-zinc-800 p-3 max-h-36 overflow-y-auto">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs text-zinc-600 uppercase tracking-wider">Logs</span>
+        <button class="text-xs text-zinc-500 hover:text-zinc-300" onclick={() => logs = []}>Clear</button>
       </div>
-      <div class="space-y-0.5">
+      <div class="space-y-0.5 font-mono text-xs">
         {#each logs as l}
-          <div class="text-xs font-mono">
-            <span class="text-gray-500">{l.time}</span>
-            <span class="mx-1 {l.level === 'error' ? 'text-red-400' : l.level === 'warn' ? 'text-yellow-400' : 'text-gray-300'}">[{l.level}]</span>
-            <span class="text-gray-300">{l.msg}</span>
+          <div class="flex gap-2">
+            <span class="text-zinc-600">{l.time}</span>
+            <span class="{l.level === 'error' ? 'text-red-500' : l.level === 'warn' ? 'text-yellow-500' : 'text-zinc-400'}">[{l.level}]</span>
+            <span class="text-zinc-300">{l.msg}</span>
           </div>
         {/each}
         {#if logs.length === 0}
-          <div class="text-xs text-gray-600 italic">No logs yet</div>
+          <div class="text-xs text-zinc-700 italic">No logs yet</div>
         {/if}
       </div>
     </div>
   {/if}
 
-  <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4" bind:this={messagesContainer}>
-    {#each conversation as msg, i}
-      <div class="max-w-[85%] animate-[fadeIn_0.3s_ease] {msg.role === 'user' ? 'self-end' : 'self-start'}">
-        <div class="p-4 rounded-2xl leading-relaxed {msg.role === 'user' ? 'bg-indigo-500 text-white rounded-br-sm' : 'bg-white/10 text-white rounded-bl-sm'}">
-          {msg.content}
+  <!-- Messages -->
+  <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3" bind:this={messagesContainer}>
+    {#if conversation.length === 0}
+      <div class="flex-1 flex flex-col items-center justify-center text-center p-8">
+        <div class="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-600">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+          </svg>
+        </div>
+        <p class="text-zinc-500 text-sm">Tap the microphone to start speaking</p>
+      </div>
+    {/if}
+
+    {#each conversation as msg}
+      <div class="max-w-[80%] animate-in fade-in-0 slide-in-from-bottom-2 duration-200 {msg.role === 'user' ? 'self-end' : 'self-start'}">
+        <div class="px-4 py-3 rounded-2xl {msg.role === 'user' ? 'bg-zinc-800 text-zinc-100 rounded-br-md' : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'}">
+          <p class="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
         </div>
       </div>
     {/each}
   </div>
 
+  <!-- Error Banner -->
   {#if $status === 'error' && $currentSession}
-    <div class="bg-red-500 text-white px-4 py-3 text-center text-sm">
-      {$error || 'Something went wrong'}
+    <div class="bg-red-500/10 border-t border-red-500/20 px-4 py-3">
+      <p class="text-sm text-red-500 text-center">{$error || 'Something went wrong'}</p>
     </div>
   {/if}
 
-  <!-- iOS TTS play button -->
+  <!-- iOS TTS Play Button -->
   {#if isIOS && pendingTTS}
-    <div class="px-4 py-3">
+    <div class="p-4 border-t border-zinc-900">
       <button
-        class="w-full flex items-center justify-center gap-3 py-4 bg-indigo-500 text-white rounded-2xl active:scale-[0.98] transition-transform"
+        class="w-full h-12 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-50 font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
         onclick={playPendingTTS}
       >
-        <span class="text-2xl">🔊</span>
-        <span class="font-semibold">Play Response</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        </svg>
+        Play Response
       </button>
     </div>
   {/if}
 
-  <!-- Push-to-talk button -->
-  <div class="p-8 pb-[max(2rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-4">
-    <!-- Status text -->
-    <p class="text-sm text-gray-400 h-6">
+  <!-- Mic Button -->
+  <footer class="p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] border-t border-zinc-900">
+    <div class="flex flex-col items-center gap-3">
+      <!-- Status text -->
+      <p class="text-xs text-zinc-600">
+        {#if $status === 'listening'}
+          Recording... tap to stop
+        {:else if $status === 'processing'}
+          Processing...
+        {:else if $status === 'speaking'}
+          Playing...
+        {:else}
+          Tap to speak
+        {/if}
+      </p>
+
+      <!-- Mic Button -->
+      <button
+        class="w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200
+          {$status === 'listening' ? 'bg-red-500 hover:bg-red-600 scale-105' : 'bg-zinc-800 hover:bg-zinc-700 border border-zinc-700'}
+          {($status === 'processing' || $status === 'speaking') ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'}"
+        onclick={toggleRecording}
+        disabled={$status === 'processing' || $status === 'speaking'}
+      >
+        {#if $status === 'listening'}
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+        {:else}
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" x2="12" y1="19" y2="22"/>
+          </svg>
+        {/if}
+      </button>
+
+      <!-- Recording indicator -->
       {#if $status === 'listening'}
-        Recording... tap to stop
-      {:else if $status === 'processing'}
-        Thinking...
-      {:else if $status === 'speaking'}
-        Speaking...
-      {:else if $status === 'error'}
-        Tap to try again
-      {:else}
-        Tap the mic to speak
+        <div class="flex gap-1">
+          {#each Array(3) as _}
+            <div class="w-1 h-4 bg-red-500 rounded-full animate-pulse"></div>
+          {/each}
+        </div>
       {/if}
-    </p>
-
-    <!-- Big mic button -->
-    <button
-      class="w-24 h-24 rounded-full flex items-center justify-center transition-all duration-200
-        {$status === 'listening' ? 'bg-red-500 scale-110 shadow-lg shadow-red-500/50' : 'bg-indigo-500 hover:bg-indigo-400 active:scale-95'}
-        {($status === 'processing' || $status === 'speaking') ? 'opacity-50 pointer-events-none' : ''}"
-      onclick={toggleRecording}
-      disabled={$status === 'processing' || $status === 'speaking'}
-    >
-      <span class="text-4xl">{$status === 'listening' ? '⏹️' : '🎤'}</span>
-    </button>
-
-    <!-- Recording waveform indicator -->
-    {#if $status === 'listening'}
-      <div class="flex items-center gap-1 h-8">
-        {#each Array(5) as _, i}
-          <div
-            class="w-1 bg-red-400 rounded-sm animate-[wave_0.6s_ease-in-out_infinite]"
-            style="height: {8 + Math.random() * 24}px; animation-delay: {i * 0.1}s"
-          ></div>
-        {/each}
-      </div>
-    {/if}
-  </div>
+    </div>
+  </footer>
 </div>
 
 <style>
-  @keyframes wave {
-    0%, 100% { height: 8px; }
-    50% { height: 32px; }
+  @keyframes fade-in-0 {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+  @keyframes slide-in-from-bottom-2 {
+    from { transform: translateY(8px); }
+    to { transform: translateY(0); }
+  }
+
+  .animate-in {
+    animation: fade-in-0 200ms ease-out, slide-in-from-bottom-2 200ms ease-out;
   }
 </style>

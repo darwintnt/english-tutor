@@ -26,5 +26,6 @@
   .app {
     width: 100%;
     min-height: 100dvh;
+    background: #09090b;
   }
 </style>
