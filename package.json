@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
@@ -17,6 +18,8 @@
     "@tsconfig/svelte": "^5.0.8",
     "@types/node": "^24.12.3",
     "autoprefixer": "^10.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
     "postcss": "^8.5.15",
     "prettier": "^3.8.4",
     "prettier-plugin-svelte": "^4.1.0",
@@ -32,5 +35,8 @@
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
     "vad-web": "^0.7.0"
+  },
+  "lint-staged": {
+    "*.{svelte,js,ts,css}": "prettier --write"
   }
 }
