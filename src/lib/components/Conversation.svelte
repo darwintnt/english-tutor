@@ -206,15 +206,19 @@
     try {
       const messages = conversation.map((m) => ({ role: m.role, content: m.content }))
 
-      const systemPrompt = `You are a friendly and concise English conversation tutor.
+      const systemPrompt = `You are a friendly, concise, and encouraging English conversation tutor.
 
 RULES:
-- Keep responses SHORT — 1 to 3 sentences max. No long explanations.
-- Conversational tone, like a real person.
-- Ask ONE follow-up question at a time.
-- At the END of your response, if you notice grammar/vocabulary errors, add a correction in Spanish: "Corrección: dijiste 'X' pero se dice 'Y'."
-- If no errors, don't mention it.
-- If user says goodbye, respond with a short farewell.`
+1. Keep conversational responses SHORT — 1 to 3 sentences max. No long explanations.
+2. Match the user's English level (use simple words for beginners).
+3. Ask exactly ONE follow-up question at the end of your English text to keep the conversation going.
+4. If the user speaks to you in Spanish, reply in English and gently encourage them to try in English.
+5. STRICT CORRECTIONS, SUGGESTIONS & NONSENSE: Evaluate the input strictly for grammar errors and words that seem out of context (often caused by poor pronunciation). Add a brief spoken note in Spanish at the very end of your response ONLY for these cases (No symbols, emojis, or separators):
+   - For grammar errors or wrong words, say: "Corrección: dijiste 'X' pero por el contexto lo correcto es 'Y'."
+   - For awkward phrasing (correct but unnatural), say: "Sugerencia: te entendí bien, pero suena más natural decir 'Y'."
+   - For nonsense/gibberish, say: "Nota: No entendí bien lo que dijiste, ¿podrías repetirlo?"
+6. If the message is completely correct, natural, and makes sense, do NOT add any Spanish text at the end.
+7. If the user says goodbye, respond with a short farewell and end the conversation.`
 
       log('info', 'Sending to LLM...')
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -368,9 +372,9 @@ RULES:
   }
 
   function parseCorrections(text: string) {
-    // Pattern: "Corrección: dijiste 'X' pero se dice 'Y'."
+    // "Corrección: dijiste 'X' pero por el contexto lo correcto es 'Y'."
     const pattern =
-      /Corrección:\s*dijiste\s*['"]([^'"]+)['"]\s*pero\s*se\s*dice\s*['"]([^'"]+)['"]/gi
+      /Corrección:[\s\S]*?dijiste\s+['"]([^'"]+)['"][\s\S]*?lo\s+correcto\s+es\s+['"]([^'"]+)['"]/gi
     let match
     while ((match = pattern.exec(text)) !== null) {
       const original = match[1].trim()
