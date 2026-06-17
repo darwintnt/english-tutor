@@ -9,6 +9,8 @@ export interface TTSResponse {
   audioUrl: string
 }
 
+const ttsCache = new Map<string, TTSResponse>()
+
 function getGroqHeaders(apiKey: string): Record<string, string> {
   return {
     Authorization: `Bearer ${apiKey}`,
@@ -25,26 +27,35 @@ function getCartesiaHeaders(apiKey: string): Record<string, string> {
 }
 
 export async function generateTTS(text: string, provider?: TTSProvider): Promise<TTSResponse> {
+  const cacheKey = text
+  const cached = ttsCache.get(cacheKey)
+  if (cached) {
+    return cached
+  }
+
   const activeProvider = provider || (API_CONFIG.ttsProvider as TTSProvider)
   const voiceId = getTTSVoice()
+
+  let result: TTSResponse
 
   if (activeProvider === 'groq') {
     const apiKey = API_CONFIG.groqApiKey
     if (!apiKey) throw new Error('Groq API key not configured')
-    return generateGroqTTS(text, apiKey, voiceId)
+    result = await generateGroqTTS(text, apiKey, voiceId)
   } else if (activeProvider === 'cartesia') {
-    // Cartesia uses Groq API key for STT/LLM but has its own TTS
-    // For now we don't have cartesia API key in config, user must set it in env
     const apiKey = import.meta.env.VITE_CARTESIA_API_KEY
     if (!apiKey) throw new Error('Cartesia API key not configured')
-    return generateCartesiaTTS(text, apiKey, voiceId)
+    result = await generateCartesiaTTS(text, apiKey, voiceId)
   } else if (activeProvider === 'google') {
     const apiKey = API_CONFIG.googleTTSApiKey
     if (!apiKey) throw new Error('Google TTS API key not configured')
-    return generateGoogleTTS(text, apiKey, voiceId)
+    result = await generateGoogleTTS(text, apiKey, voiceId)
+  } else {
+    throw new Error(`Unknown TTS provider: ${activeProvider}`)
   }
 
-  throw new Error(`Unknown TTS provider: ${activeProvider}`)
+  ttsCache.set(cacheKey, result)
+  return result
 }
 
 async function generateGroqTTS(
@@ -178,5 +189,15 @@ async function generateGoogleTTS(
 }
 
 export function revokeTTSUrl(url: string) {
+  for (const cached of ttsCache.values()) {
+    if (cached.audioUrl === url) return
+  }
   URL.revokeObjectURL(url)
+}
+
+export function clearTTSCache() {
+  for (const cached of ttsCache.values()) {
+    URL.revokeObjectURL(cached.audioUrl)
+  }
+  ttsCache.clear()
 }

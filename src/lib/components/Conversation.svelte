@@ -16,6 +16,7 @@
   let messagesContainer: HTMLDivElement | null = null
   let pendingTTS: { text: string; audioUrl: string } | null = null
   let isPlayingTTS = false
+  let isPaused = false
   let playingMessageId: number | null = null
   let isRecording = false
   let sessionActive = false
@@ -295,6 +296,7 @@ RULES:
         currentAudio = null
         pendingTTS = null
         playingMessageId = null
+        isPaused = false
         isProcessingTurn = false
         setStatus('idle')
       }
@@ -304,6 +306,7 @@ RULES:
         currentAudio = null
         pendingTTS = null
         playingMessageId = null
+        isPaused = false
         isProcessingTurn = false
         setStatus('idle')
       }
@@ -338,6 +341,7 @@ RULES:
       currentAudio = null
       isPlayingTTS = false
       playingMessageId = null
+      isPaused = false
       isProcessingTurn = false
       setStatus('idle')
     }
@@ -348,6 +352,7 @@ RULES:
       currentAudio = null
       isPlayingTTS = false
       playingMessageId = null
+      isPaused = false
       isProcessingTurn = false
       setStatus('idle')
     }
@@ -358,6 +363,8 @@ RULES:
   async function playMessageAudio(msg: Message) {
     if (isPlayingTTS && playingMessageId === msg.id) {
       currentAudio?.pause()
+      isPaused = true
+      setStatus('idle')
       return
     }
     if (currentAudio && playingMessageId !== msg.id) {
@@ -366,6 +373,7 @@ RULES:
     }
     setStatus('speaking')
     isPlayingTTS = true
+    isPaused = false
     playingMessageId = msg.id
 
     const { audioUrl } = await generateTTS(msg.content)
@@ -377,6 +385,7 @@ RULES:
       currentAudio = null
       playingMessageId = null
       isPlayingTTS = false
+      isPaused = false
       setStatus('idle')
     }
 
@@ -385,6 +394,7 @@ RULES:
       currentAudio = null
       playingMessageId = null
       isPlayingTTS = false
+      isPaused = false
       setStatus('idle')
     }
 
@@ -392,12 +402,22 @@ RULES:
   }
 
   function togglePlayPause(msg: Message) {
-    if (isPlayingTTS && playingMessageId === msg.id) {
+    if (isPaused && playingMessageId === msg.id) {
+      currentAudio?.play()
+      isPaused = false
+      setStatus('speaking')
+    } else if (isPlayingTTS && playingMessageId === msg.id) {
       currentAudio?.pause()
+      isPaused = true
+      setStatus('idle')
     } else if (currentAudio && playingMessageId !== msg.id) {
       currentAudio.pause()
+      currentAudio = null
+      pendingTTS = null
+      isPaused = false
       playMessageAudio(msg)
     } else if (!currentAudio) {
+      pendingTTS = null
       playMessageAudio(msg)
     }
   }
@@ -555,12 +575,12 @@ RULES:
             : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'} relative group"
         >
           <p class="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-          {#if msg.role === 'assistant' && !isIOS}
+          {#if msg.role === 'assistant'}
             <button
               class="absolute -bottom-3 -right-3 w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
               onclick={() => togglePlayPause(msg)}
             >
-              {#if isPlayingTTS && playingMessageId === msg.id}
+              {#if isPlayingTTS && playingMessageId === msg.id && !isPaused}
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="14"
@@ -595,32 +615,6 @@ RULES:
   {#if $status === 'error' && $currentSession}
     <div class="bg-red-500/10 border-t border-red-500/20 px-4 py-3">
       <p class="text-sm text-red-500 text-center">{$error || 'Something went wrong'}</p>
-    </div>
-  {/if}
-
-  <!-- iOS TTS Play Button -->
-  {#if isIOS && pendingTTS}
-    <div class="p-4 border-t border-zinc-900">
-      <button
-        class="w-full h-12 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-50 font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
-        onclick={playPendingTTS}
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-        </svg>
-        Play Response
-      </button>
     </div>
   {/if}
 
