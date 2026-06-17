@@ -14,7 +14,6 @@
   let isProcessingTurn = false
   let currentAudio: HTMLAudioElement | null = null
   let messagesContainer: HTMLDivElement | null = null
-  let pendingTTS: { text: string; audioUrl: string } | null = null
   let isPlayingTTS = false
   let isPaused = false
   let playingMessageId: string | null = null
@@ -286,13 +285,6 @@ RULES:
       const { audioUrl } = await generateTTS(text)
       log('info', 'TTS audio ready')
 
-      if (isIOS) {
-        pendingTTS = { text, audioUrl }
-        isProcessingTurn = false
-        setStatus('idle')
-        return
-      }
-
       currentAudio = new Audio(audioUrl)
       currentAudio.playbackRate = $speed
       log('info', 'Playing audio...')
@@ -300,7 +292,6 @@ RULES:
       currentAudio.onended = () => {
         revokeTTSUrl(audioUrl)
         currentAudio = null
-        pendingTTS = null
         playingMessageId = null
         isPaused = false
         isProcessingTurn = false
@@ -310,7 +301,6 @@ RULES:
       currentAudio.onerror = () => {
         revokeTTSUrl(audioUrl)
         currentAudio = null
-        pendingTTS = null
         playingMessageId = null
         isPaused = false
         isProcessingTurn = false
@@ -331,39 +321,6 @@ RULES:
       setStatus('error')
       isProcessingTurn = false
     }
-  }
-
-  async function playPendingTTS() {
-    if (!pendingTTS || isPlayingTTS) return
-    isPlayingTTS = true
-    setStatus('speaking')
-
-    currentAudio = new Audio(pendingTTS.audioUrl)
-    currentAudio.playbackRate = $speed
-
-    currentAudio.onended = () => {
-      revokeTTSUrl(pendingTTS?.audioUrl ?? '')
-      pendingTTS = null
-      currentAudio = null
-      isPlayingTTS = false
-      playingMessageId = null
-      isPaused = false
-      isProcessingTurn = false
-      setStatus('idle')
-    }
-
-    currentAudio.onerror = () => {
-      revokeTTSUrl(pendingTTS?.audioUrl ?? '')
-      pendingTTS = null
-      currentAudio = null
-      isPlayingTTS = false
-      playingMessageId = null
-      isPaused = false
-      isProcessingTurn = false
-      setStatus('idle')
-    }
-
-    await currentAudio.play()
   }
 
   async function playMessageAudio(msg: Message) {
@@ -419,11 +376,9 @@ RULES:
     } else if (currentAudio && playingMessageId !== msg.id) {
       currentAudio.pause()
       currentAudio = null
-      pendingTTS = null
       isPaused = false
       playMessageAudio(msg)
     } else if (!currentAudio) {
-      pendingTTS = null
       playMessageAudio(msg)
     }
   }
@@ -566,7 +521,6 @@ RULES:
     }
     isRecording = false
     isProcessingTurn = false
-    pendingTTS = null
   }
 
   function endConversation() {
@@ -614,23 +568,53 @@ RULES:
     class="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-zinc-900"
   >
     <button
-      class="h-9 px-4 inline-flex items-center justify-center rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+      class="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-zinc-100 transition-colors"
       onclick={endConversation}
     >
-      End
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
     </button>
 
     <span class="text-sm font-medium text-zinc-500">{getStatusText($status)}</span>
 
     {#if isIOS}
       <button
-        class="h-9 px-4 inline-flex items-center justify-center rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+        class="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-zinc-100 transition-colors"
         onclick={() => (showDebug = !showDebug)}
       >
-        {showDebug ? 'Hide' : 'Debug'}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M12 12h.01" />
+          <path d="M8 4v4" />
+          <path d="M16 4v4" />
+          <path d="M12 20v-4" />
+          <path d="M4 12h.01" />
+          <path d="M20 12h.01" />
+        </svg>
       </button>
     {:else}
-      <div class="w-[60px]"></div>
+      <div class="w-9"></div>
     {/if}
   </header>
 
