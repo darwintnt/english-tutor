@@ -17,7 +17,7 @@
   let pendingTTS: { text: string; audioUrl: string } | null = null
   let isPlayingTTS = false
   let isPaused = false
-  let playingMessageId: number | null = null
+  let playingMessageId: string | null = null
   let isRecording = false
   let sessionActive = false
   let showDebug = false
@@ -186,7 +186,7 @@
         return
       }
 
-      addMessage({ role: 'user', content: transcript })
+      addMessage({ role: 'user', content: transcript, transcript })
       log('info', 'Calling LLM...')
       await sendToLLM(transcript)
     } catch (err) {
@@ -219,8 +219,8 @@ RULES:
 3. Ask exactly ONE follow-up question at the end of your English text to keep the conversation going.
 4. If the user speaks to you in Spanish, reply in English and gently encourage them to try in English.
 5. STRICT CORRECTIONS, SUGGESTIONS & NONSENSE: Evaluate the input strictly for grammar errors and words that seem out of context (often caused by poor pronunciation). Add a brief spoken note in Spanish at the very end of your response ONLY for these cases (No symbols, emojis, or separators):
-   - For grammar errors or wrong words, say: "Corrección: dijiste 'X' pero por el contexto lo correcto es 'Y'."
-   - For awkward phrasing (correct but unnatural), say: "Sugerencia: te entendí bien, pero suena más natural decir 'Y'."
+   - For grammar errors or wrong words, say: "Corrección: dijiste 'X' pero lo correcto es 'Y' (/IPA/)." Include IPA phonetic transcription for both the error and the correction.
+   - For awkward phrasing (correct but unnatural), say: "Sugerencia: te entendí bien, pero suena más natural decir 'Y' (/IPA/)."
    - For nonsense/gibberish, say: "Nota: No entendí bien lo que dijiste, ¿podrías repetirlo?"
 6. If the message is completely correct, natural, and makes sense, do NOT add any Spanish text at the end.
 7. If the user says goodbye, respond with a short farewell and end the conversation.`
@@ -256,7 +256,7 @@ RULES:
 
       addMessage({ role: 'assistant', content: assistantMessage })
       parseCorrections(assistantMessage)
-      playingMessageId = conversation.length - 1
+      playingMessageId = conversation[conversation.length - 1]?.id
       log('info', 'Generating TTS...')
       await playTTS(assistantMessage)
     } catch (err) {
@@ -339,7 +339,7 @@ RULES:
     currentAudio.playbackRate = $speed
 
     currentAudio.onended = () => {
-      revokeTTSUrl(pendingTTS.audioUrl)
+      revokeTTSUrl(pendingTTS?.audioUrl ?? '')
       pendingTTS = null
       currentAudio = null
       isPlayingTTS = false
@@ -350,7 +350,7 @@ RULES:
     }
 
     currentAudio.onerror = () => {
-      revokeTTSUrl(pendingTTS.audioUrl)
+      revokeTTSUrl(pendingTTS?.audioUrl ?? '')
       pendingTTS = null
       currentAudio = null
       isPlayingTTS = false
@@ -510,9 +510,9 @@ RULES:
   }
 
   function parseCorrections(text: string) {
-    // "Corrección: dijiste 'X' pero por el contexto lo correcto es 'Y'."
+    // "Corrección: dijiste 'X' pero lo correcto es 'Y' (/IPA/)."
     const pattern =
-      /Corrección:[\s\S]*?dijiste\s+['"]([^'"]+)['"][\s\S]*?lo\s+correcto\s+es\s+['"]([^'"]+)['"]/gi
+      /Corrección:[\s\S]*?dijiste\s+['"]([^'"]+)['"][\s\S]*?lo\s+correcto\s+es\s+['"]([^'"]+)['"]\s*\([^)]+\)/gi
     let match
     while ((match = pattern.exec(text)) !== null) {
       const original = match[1].trim()
@@ -648,6 +648,11 @@ RULES:
               {msg.content}
             {/if}
           </p>
+          {#if msg.role === 'user' && msg.transcript && msg.transcript !== msg.content}
+            <p class="text-xs text-zinc-500 mt-1 italic border-t border-zinc-700/50 pt-1">
+              Whisper heard: "{msg.transcript}"
+            </p>
+          {/if}
           {#if msg.role === 'assistant'}
             <button
               class="absolute -bottom-3 -right-3 w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"

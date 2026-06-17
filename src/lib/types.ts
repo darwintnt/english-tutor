@@ -7,6 +7,7 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: number
+  transcript?: string
 }
 
 export interface Correction {
