@@ -25,6 +25,9 @@
   let translations = new Map<string, string>()
   let translatedMessageId: string | null = null
   let translatingMessageId: string | null = null
+  let ipaCache = new Map<string, string>()
+  let ipaMessageId: string | null = null
+  let generatingIpaId: string | null = null
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
 
@@ -487,6 +490,68 @@ RULES:
     }
   }
 
+  async function generateIPA(msg: Message) {
+    const cached = ipaCache.get(msg.id)
+    if (cached) return cached
+
+    generatingIpaId = msg.id
+    const apiKey = import.meta.env.VITE_GROQ_API_KEY
+    if (!apiKey) {
+      generatingIpaId = null
+      return null
+    }
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: API_CONFIG.llmModel,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are a phonetic transcription assistant. Convert the following English text to IPA (International Phonetic Alphabet). Only respond with the IPA transcription, nothing else. Example: "Hello" → /həˈloʊ/',
+            },
+            { role: 'user', content: msg.content },
+          ],
+          max_tokens: 500,
+        }),
+      })
+
+      if (!response.ok) throw new Error('IPA generation failed')
+
+      const data = await response.json()
+      const ipa = data.choices[0]?.message?.content?.trim() || ''
+      ipaCache.set(msg.id, ipa)
+      return ipa
+    } catch (err) {
+      console.error('IPA error:', err)
+      return null
+    } finally {
+      generatingIpaId = null
+    }
+  }
+
+  async function toggleIPA(msg: Message) {
+    if (ipaMessageId === msg.id) {
+      ipaMessageId = null
+    } else {
+      const cached = ipaCache.get(msg.id)
+      if (cached) {
+        ipaMessageId = msg.id
+      } else {
+        const ipa = await generateIPA(msg)
+        if (ipa) {
+          ipaMessageId = msg.id
+        }
+      }
+    }
+  }
+
   function cleanup() {
     sessionActive = false
     if (mediaRecorder) {
@@ -648,97 +713,125 @@ RULES:
               {msg.content}
             {/if}
           </p>
+          {#if msg.role === 'assistant' && ipaMessageId === msg.id && ipaCache.get(msg.id)}
+            <p class="text-xs text-zinc-400 mt-1 font-mono border-t border-zinc-700/50 pt-1">
+              {ipaCache.get(msg.id)}
+            </p>
+          {/if}
           {#if msg.role === 'user' && msg.transcript && msg.transcript !== msg.content}
             <p class="text-xs text-zinc-500 mt-1 italic border-t border-zinc-700/50 pt-1">
               Whisper heard: "{msg.transcript}"
             </p>
           {/if}
           {#if msg.role === 'assistant'}
-            <button
-              class="absolute -bottom-3 -right-3 w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
-              onclick={() => togglePlayPause(msg)}
-            >
-              {#if isPlayingTTS && playingMessageId === msg.id && !isPaused}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  stroke="none"
-                >
-                  <rect x="6" y="4" width="4" height="16" rx="1" />
-                  <rect x="14" y="4" width="4" height="16" rx="1" />
-                </svg>
-              {:else}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  stroke="none"
-                >
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-              {/if}
-            </button>
-            <button
-              class="absolute -bottom-3 -right-12 w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
-              onclick={() => toggleTranslation(msg)}
-            >
-              {#if translatingMessageId === msg.id}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  class="animate-spin"
-                >
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
-              {:else if translatedMessageId === msg.id}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="m5 8 6 6" />
-                  <path d="m4 14 6-6 2-3" />
-                  <path d="M2 5h12" />
-                  <path d="M7 2h1" />
-                  <path d="m22 22-5-10-5 10" />
-                  <path d="M14 18h6" />
-                </svg>
-              {:else}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <path
-                    d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
-                  />
-                  <path d="M2 12h20" />
-                </svg>
-              {/if}
-            </button>
+            <div class="absolute -bottom-6 left-1 flex items-center gap-1">
+              <button
+                class="w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
+                onclick={() => togglePlayPause(msg)}
+              >
+                {#if isPlayingTTS && playingMessageId === msg.id && !isPaused}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    stroke="none"
+                  >
+                    <rect x="6" y="4" width="4" height="16" rx="1" />
+                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                  </svg>
+                {:else}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    stroke="none"
+                  >
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                  </svg>
+                {/if}
+              </button>
+              <button
+                class="w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
+                onclick={() => toggleTranslation(msg)}
+              >
+                {#if translatingMessageId === msg.id}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    class="animate-spin"
+                  >
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                {:else if translatedMessageId === msg.id}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="m5 8 6 6" />
+                    <path d="m4 14 6-6 2-3" />
+                    <path d="M2 5h12" />
+                    <path d="M7 2h1" />
+                    <path d="m22 22-5-10-5 10" />
+                    <path d="M14 18h6" />
+                  </svg>
+                {:else}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path
+                      d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+                    />
+                    <path d="M2 12h20" />
+                  </svg>
+                {/if}
+              </button>
+              <button
+                class="w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
+                onclick={() => toggleIPA(msg)}
+              >
+                {#if generatingIpaId === msg.id}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    class="animate-spin"
+                  >
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                {:else}
+                  <span class="text-xs font-bold text-zinc-200">IPA</span>
+                {/if}
+              </button>
+            </div>
           {/if}
         </div>
       </div>
