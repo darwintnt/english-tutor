@@ -22,6 +22,9 @@
   let sessionActive = false
   let showDebug = false
   let logs: { time: string; level: 'info' | 'error' | 'warn'; msg: string }[] = []
+  let translations = new Map<string, string>()
+  let translatedMessageId: string | null = null
+  let translatingMessageId: string | null = null
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
 
@@ -422,6 +425,68 @@ RULES:
     }
   }
 
+  async function translateMessage(msg: Message) {
+    const cached = translations.get(msg.id)
+    if (cached) return cached
+
+    translatingMessageId = msg.id
+    const apiKey = import.meta.env.VITE_GROQ_API_KEY
+    if (!apiKey) {
+      translatingMessageId = null
+      return null
+    }
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: API_CONFIG.llmModel,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are a translator. Translate the following English text to Spanish. Only respond with the translation, nothing else.',
+            },
+            { role: 'user', content: msg.content },
+          ],
+          max_tokens: 500,
+        }),
+      })
+
+      if (!response.ok) throw new Error('Translation failed')
+
+      const data = await response.json()
+      const translation = data.choices[0]?.message?.content?.trim() || ''
+      translations.set(msg.id, translation)
+      return translation
+    } catch (err) {
+      console.error('Translation error:', err)
+      return null
+    } finally {
+      translatingMessageId = null
+    }
+  }
+
+  async function toggleTranslation(msg: Message) {
+    if (translatedMessageId === msg.id) {
+      translatedMessageId = null
+    } else {
+      const cached = translations.get(msg.id)
+      if (cached) {
+        translatedMessageId = msg.id
+      } else {
+        const translation = await translateMessage(msg)
+        if (translation) {
+          translatedMessageId = msg.id
+        }
+      }
+    }
+  }
+
   function cleanup() {
     sessionActive = false
     if (mediaRecorder) {
@@ -563,18 +628,26 @@ RULES:
     {/if}
 
     {#each conversation as msg, i}
+      {@const prevMsg = conversation[i - 1]}
+      {@const hasGap = prevMsg && prevMsg.role !== msg.role}
       <div
         class="max-w-[80%] animate-in fade-in-0 slide-in-from-bottom-2 duration-200 {msg.role ===
         'user'
           ? 'self-end'
-          : 'self-start'}"
+          : 'self-start'}{hasGap ? ' mt-4' : ''}"
       >
         <div
           class="px-4 py-3 rounded-2xl {msg.role === 'user'
             ? 'bg-zinc-800 text-zinc-100 rounded-br-md'
             : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'} relative group"
         >
-          <p class="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+          <p class="text-sm leading-relaxed whitespace-pre-wrap">
+            {#if translatedMessageId === msg.id && translations.get(msg.id)}
+              {translations.get(msg.id)}
+            {:else}
+              {msg.content}
+            {/if}
+          </p>
           {#if msg.role === 'assistant'}
             <button
               class="absolute -bottom-3 -right-3 w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
@@ -602,6 +675,62 @@ RULES:
                   stroke="none"
                 >
                   <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              {/if}
+            </button>
+            <button
+              class="absolute -bottom-3 -right-12 w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
+              onclick={() => toggleTranslation(msg)}
+            >
+              {#if translatingMessageId === msg.id}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="animate-spin"
+                >
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+              {:else if translatedMessageId === msg.id}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="m5 8 6 6" />
+                  <path d="m4 14 6-6 2-3" />
+                  <path d="M2 5h12" />
+                  <path d="M7 2h1" />
+                  <path d="m22 22-5-10-5 10" />
+                  <path d="M14 18h6" />
+                </svg>
+              {:else}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path
+                    d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+                  />
+                  <path d="M2 12h20" />
                 </svg>
               {/if}
             </button>
