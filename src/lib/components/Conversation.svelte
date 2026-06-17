@@ -213,19 +213,20 @@
     try {
       const messages = conversation.map((m) => ({ role: m.role, content: m.content }))
 
-      const systemPrompt = `You are a friendly, concise, and encouraging English conversation tutor.
+      const systemPrompt = `You are a friendly, concise English conversation tutor.
+
+IMPORTANT: You MUST correct grammar and pronunciation errors.
 
 RULES:
-1. Keep conversational responses SHORT — 1 to 3 sentences max. No long explanations.
-2. Match the user's English level (use simple words for beginners).
-3. Ask exactly ONE follow-up question at the end of your English text to keep the conversation going.
-4. If the user speaks to you in Spanish, reply in English and gently encourage them to try in English.
-5. STRICT CORRECTIONS, SUGGESTIONS & NONSENSE: Evaluate the input strictly for grammar errors and words that seem out of context (often caused by poor pronunciation). Add a brief spoken note in Spanish at the very end of your response ONLY for these cases (No symbols, emojis, or separators):
-   - For grammar errors or wrong words, say: "Corrección: dijiste 'X' pero lo correcto es 'Y' (/IPA/)." Include IPA phonetic transcription for both the error and the correction.
-   - For awkward phrasing (correct but unnatural), say: "Sugerencia: te entendí bien, pero suena más natural decir 'Y' (/IPA/)."
-   - For nonsense/gibberish, say: "Nota: No entendí bien lo que dijiste, ¿podrías repetirlo?"
-6. If the message is completely correct, natural, and makes sense, do NOT add any Spanish text at the end.
-7. If the user says goodbye, respond with a short farewell and end the conversation.`
+1. Keep responses SHORT — 1 to 3 sentences max.
+2. Ask ONE follow-up question at the end to keep conversation going.
+3. If user speaks Spanish, encourage them to try in English but continue in English.
+4. ALWAYS correct grammar errors when the user writes in English. The correction in Spanish goes at the END of your response, after your English text. Format:
+   - Grammar error: "Corrección: dijiste 'X' pero lo correcto es 'Y'."
+   - Awkward phrasing: "Sugerencia: suena más natural decir 'Y'."
+   - Didn't understand: "Nota: No entendí bien, ¿podrías repetirlo?"
+5. If the message is correct, just respond normally without any Spanish.
+6. If user says goodbye, say farewell and end.`
 
       log('info', 'Sending to LLM...')
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -309,14 +310,14 @@ RULES:
 
       await currentAudio.play()
     } catch (err) {
-      console.error('TTS error:', err)
       const msg = err instanceof Error ? err.message : String(err)
+      log('error', `TTS error: ${msg}`)
       if (msg.includes('rate_limit') || msg.includes('429')) {
         const waitMatch = msg.match(/try again in (\d+m)?(\d+s)?/)
         const waitTime = waitMatch ? waitMatch[0].replace('try again in ', '') : 'quota exhausted'
         setError(`Groq TTS limit reached. Try again in ${waitTime}`)
       } else {
-        setError('TTS failed. Check debug logs.')
+        setError(`TTS failed: ${msg}`)
       }
       setStatus('error')
       isProcessingTurn = false
@@ -422,7 +423,7 @@ RULES:
       translations.set(msg.id, translation)
       return translation
     } catch (err) {
-      console.error('Translation error:', err)
+      log('error', `Translation error: ${err instanceof Error ? err.message : String(err)}`)
       return null
     } finally {
       translatingMessageId = null
@@ -484,7 +485,7 @@ RULES:
       ipaCache.set(msg.id, ipa)
       return ipa
     } catch (err) {
-      console.error('IPA error:', err)
+      log('error', `IPA error: ${err instanceof Error ? err.message : String(err)}`)
       return null
     } finally {
       generatingIpaId = null
@@ -529,9 +530,9 @@ RULES:
   }
 
   function parseCorrections(text: string) {
-    // "Corrección: dijiste 'X' pero lo correcto es 'Y' (/IPA/)."
+    // "Corrección: dijiste 'X' pero lo correcto es 'Y'."
     const pattern =
-      /Corrección:[\s\S]*?dijiste\s+['"]([^'"]+)['"][\s\S]*?lo\s+correcto\s+es\s+['"]([^'"]+)['"]\s*\([^)]+\)/gi
+      /Corrección:[\s\S]*?dijiste\s+['"]([^'"]+)['"][\s\S]*?lo\s+correcto\s+es\s+['"]([^'"]+)['"]/gi
     let match
     while ((match = pattern.exec(text)) !== null) {
       const original = match[1].trim()
@@ -570,6 +571,7 @@ RULES:
     <button
       class="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-zinc-100 transition-colors"
       onclick={endConversation}
+      aria-label="End conversation"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -593,6 +595,7 @@ RULES:
       <button
         class="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 hover:text-zinc-100 transition-colors"
         onclick={() => (showDebug = !showDebug)}
+        aria-label="Toggle debug logs"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"

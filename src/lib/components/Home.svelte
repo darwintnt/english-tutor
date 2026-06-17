@@ -143,15 +143,41 @@
       </button>
 
       {#if showHistory}
-        <div class="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
+        <div class="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
           {#each $sessionHistory as session}
-            <div
-              class="flex justify-between items-center py-2 border-b border-zinc-800 last:border-0"
-            >
-              <span class="text-sm text-zinc-300"
-                >{new Date(session.startTime).toLocaleDateString()}</span
-              >
-              <span class="text-xs text-zinc-600">{session.messages.length} msgs</span>
+            <div class="py-2 border-b border-zinc-800 last:border-0">
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-zinc-300"
+                  >{new Date(session.startTime).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}</span
+                >
+                <span class="text-xs text-zinc-600">{session.messages.length} msgs</span>
+              </div>
+              {#if session.corrections.length > 0}
+                <div class="mt-2 pl-2 border-l-2 border-red-500/30 space-y-1">
+                  <p class="text-xs text-red-400 font-medium">
+                    {session.corrections.length} correction{session.corrections.length > 1
+                      ? 's'
+                      : ''}:
+                  </p>
+                  {#each session.corrections.slice(0, 3) as correction}
+                    <p class="text-xs text-zinc-400">
+                      <span class="text-zinc-500 line-through">{correction.original}</span>
+                      <span class="text-zinc-600 mx-1">→</span>
+                      <span class="text-emerald-400">{correction.corrected}</span>
+                    </p>
+                  {/each}
+                  {#if session.corrections.length > 3}
+                    <p class="text-xs text-zinc-600">
+                      +{session.corrections.length - 3} more
+                    </p>
+                  {/if}
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
