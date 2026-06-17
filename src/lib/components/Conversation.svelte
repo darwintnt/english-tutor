@@ -16,6 +16,7 @@
   let messagesContainer: HTMLDivElement | null = null
   let pendingTTS: { text: string; audioUrl: string } | null = null
   let isPlayingTTS = false
+  let playingMessageId: number | null = null
   let isRecording = false
   let sessionActive = false
   let showDebug = false
@@ -251,6 +252,7 @@ RULES:
 
       addMessage({ role: 'assistant', content: assistantMessage })
       parseCorrections(assistantMessage)
+      playingMessageId = conversation.length - 1
       log('info', 'Generating TTS...')
       await playTTS(assistantMessage)
     } catch (err) {
@@ -292,6 +294,7 @@ RULES:
         revokeTTSUrl(audioUrl)
         currentAudio = null
         pendingTTS = null
+        playingMessageId = null
         isProcessingTurn = false
         setStatus('idle')
       }
@@ -300,6 +303,7 @@ RULES:
         revokeTTSUrl(audioUrl)
         currentAudio = null
         pendingTTS = null
+        playingMessageId = null
         isProcessingTurn = false
         setStatus('idle')
       }
@@ -333,6 +337,7 @@ RULES:
       pendingTTS = null
       currentAudio = null
       isPlayingTTS = false
+      playingMessageId = null
       isProcessingTurn = false
       setStatus('idle')
     }
@@ -342,11 +347,59 @@ RULES:
       pendingTTS = null
       currentAudio = null
       isPlayingTTS = false
+      playingMessageId = null
       isProcessingTurn = false
       setStatus('idle')
     }
 
     await currentAudio.play()
+  }
+
+  async function playMessageAudio(msg: Message) {
+    if (isPlayingTTS && playingMessageId === msg.id) {
+      currentAudio?.pause()
+      return
+    }
+    if (currentAudio && playingMessageId !== msg.id) {
+      currentAudio.pause()
+      currentAudio = null
+    }
+    setStatus('speaking')
+    isPlayingTTS = true
+    playingMessageId = msg.id
+
+    const { audioUrl } = await generateTTS(msg.content)
+    currentAudio = new Audio(audioUrl)
+    currentAudio.playbackRate = $speed
+
+    currentAudio.onended = () => {
+      revokeTTSUrl(audioUrl)
+      currentAudio = null
+      playingMessageId = null
+      isPlayingTTS = false
+      setStatus('idle')
+    }
+
+    currentAudio.onerror = () => {
+      revokeTTSUrl(audioUrl)
+      currentAudio = null
+      playingMessageId = null
+      isPlayingTTS = false
+      setStatus('idle')
+    }
+
+    await currentAudio.play()
+  }
+
+  function togglePlayPause(msg: Message) {
+    if (isPlayingTTS && playingMessageId === msg.id) {
+      currentAudio?.pause()
+    } else if (currentAudio && playingMessageId !== msg.id) {
+      currentAudio.pause()
+      playMessageAudio(msg)
+    } else if (!currentAudio) {
+      playMessageAudio(msg)
+    }
   }
 
   function cleanup() {
@@ -489,7 +542,7 @@ RULES:
       </div>
     {/if}
 
-    {#each conversation as msg}
+    {#each conversation as msg, i}
       <div
         class="max-w-[80%] animate-in fade-in-0 slide-in-from-bottom-2 duration-200 {msg.role ===
         'user'
@@ -499,9 +552,40 @@ RULES:
         <div
           class="px-4 py-3 rounded-2xl {msg.role === 'user'
             ? 'bg-zinc-800 text-zinc-100 rounded-br-md'
-            : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'}"
+            : 'bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-bl-md'} relative group"
         >
           <p class="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+          {#if msg.role === 'assistant' && !isIOS}
+            <button
+              class="absolute -bottom-3 -right-3 w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
+              onclick={() => togglePlayPause(msg)}
+            >
+              {#if isPlayingTTS && playingMessageId === msg.id}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  stroke="none"
+                >
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              {:else}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  stroke="none"
+                >
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              {/if}
+            </button>
+          {/if}
         </div>
       </div>
     {/each}
