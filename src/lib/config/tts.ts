@@ -1,7 +1,7 @@
 // TTS Provider configuration
-// Easy switch between providers: 'groq' or 'cartesia'
+// Easy switch between providers: 'groq'
 
-export type TTSProvider = 'groq' | 'cartesia'
+export type TTSProvider = 'groq'
 
 export interface TTSConfig {
   provider: TTSProvider
@@ -20,7 +20,6 @@ export const TTS_VOICES: Record<TTSProvider, TTSVoice[]> = {
     { id: 'troy', name: 'Troy (Male)' },
     { id: 'hannah', name: 'Hannah (Female)' },
   ],
-  cartesia: [{ id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', name: 'Aristocrat' }],
 }
 
 export function getDefaultVoice(provider: TTSProvider): TTSVoice {

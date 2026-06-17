@@ -11,14 +11,12 @@ export const API_CONFIG = {
   // Whisper Model (Groq STT)
   whisperModel: (import.meta.env.VITE_WHISPER_MODEL as string) || 'whisper-large-v3',
 
-  // TTS Provider: 'groq', 'cartesia', or 'google'
-  ttsProvider: (import.meta.env.VITE_TTS_PROVIDER as 'groq' | 'cartesia' | 'google') || 'groq',
+  // TTS Provider: 'groq', or 'google'
+  ttsProvider: (import.meta.env.VITE_TTS_PROVIDER as 'groq' | 'google') || 'groq',
 
   // TTS Voice ID per provider
   ttsVoice: {
     groq: (import.meta.env.VITE_GROQ_TTS_VOICE as string) || 'austin',
-    cartesia:
-      (import.meta.env.VITE_CARTESIA_TTS_VOICE as string) || 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',
     google: (import.meta.env.VITE_GOOGLE_TTS_VOICE as string) || 'en-US-Neural2-D',
   },
 

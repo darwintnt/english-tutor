@@ -1,5 +1,5 @@
 // TTS Service - Unified interface for text-to-speech
-// Supports multiple providers: Groq, Cartesia, and Google Cloud TTS
+// Supports multiple providers: Groq, and Google Cloud TTS
 
 import { API_CONFIG, getTTSVoice } from '../config/api'
 import type { TTSProvider } from '../config/tts'
@@ -15,14 +15,6 @@ function getGroqHeaders(apiKey: string): Record<string, string> {
   return {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
-  }
-}
-
-function getCartesiaHeaders(apiKey: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-    'Cartesia-Version': '2024-06-10',
   }
 }
 
@@ -42,10 +34,6 @@ export async function generateTTS(text: string, provider?: TTSProvider): Promise
     const apiKey = API_CONFIG.groqApiKey
     if (!apiKey) throw new Error('Groq API key not configured')
     result = await generateGroqTTS(text, apiKey, voiceId)
-  } else if (activeProvider === 'cartesia') {
-    const apiKey = import.meta.env.VITE_CARTESIA_API_KEY
-    if (!apiKey) throw new Error('Cartesia API key not configured')
-    result = await generateCartesiaTTS(text, apiKey, voiceId)
   } else if (activeProvider === 'google') {
     const apiKey = API_CONFIG.googleTTSApiKey
     if (!apiKey) throw new Error('Google TTS API key not configured')
@@ -93,42 +81,6 @@ async function generateGroqTTS(
   return { audioBlob, audioUrl }
 }
 
-async function generateCartesiaTTS(
-  text: string,
-  apiKey: string,
-  voiceId: string
-): Promise<TTSResponse> {
-  const response = await fetch('https://api.cartesia.ai/tts/bytes', {
-    method: 'POST',
-    headers: getCartesiaHeaders(apiKey),
-    body: JSON.stringify({
-      model_id: 'sonic-3.5',
-      transcript: text,
-      voice: {
-        mode: 'id',
-        id: voiceId,
-      },
-      language: 'en',
-      output_format: {
-        container: 'mp3',
-        bit_rate: 128000,
-        sample_rate: 44100,
-      },
-    }),
-  })
-
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Cartesia TTS error: ${response.status} - ${error}`)
-  }
-
-  const arrayBuffer = await response.arrayBuffer()
-  const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' })
-  const audioUrl = URL.createObjectURL(audioBlob)
-
-  return { audioBlob, audioUrl }
-}
-
 async function generateGoogleTTS(
   text: string,
   apiKey: string,
@@ -151,7 +103,7 @@ async function generateGoogleTTS(
         },
         audioConfig: {
           audioEncoding: 'MP3',
-          speakingRate: 1.0,
+          speakingRate: 1,
         },
       }),
     }

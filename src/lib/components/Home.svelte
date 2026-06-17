@@ -4,7 +4,6 @@
   import type { Speed } from '../types'
   import { SPEEDS, SPEED_LABELS } from '../types'
   import { checkApiHealth, type ApiStatus } from '../services/api-health'
-  import { usageStore } from '../stores/usage'
 
   const { speed, sessionHistory } = appStore
 
@@ -33,21 +32,6 @@
   function isAnyError(status: ApiStatus) {
     return status.groq === 'error'
   }
-
-  function getMostCriticalUsage(usage: typeof $usageStore) {
-    const items = [
-      { name: 'Whisper STT', used: usage.daily.whisper.used, max: usage.daily.whisper.max },
-      { name: 'LLaMA LLM', used: usage.daily.llm.used, max: usage.daily.llm.max },
-      { name: 'Orpheus TTS', used: usage.daily.tts.used, max: usage.daily.tts.max },
-    ]
-    return items.reduce((a, b) => (a.used / a.max > b.used / b.max ? a : b))
-  }
-
-  function getProgressColor(pct: number) {
-    if (pct >= 90) return 'bg-red-500'
-    if (pct >= 80) return 'bg-yellow-500'
-    return 'bg-emerald-500'
-  }
 </script>
 
 <div class="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col">
@@ -63,7 +47,7 @@
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <div class="w-2 h-2 rounded-full {getStatusDot(apiStatus.groq)}"></div>
-          <span class="text-sm text-zinc-400">Groq API</span>
+          <span class="text-sm text-zinc-400">Groq API STT</span>
         </div>
         <span
           class="text-xs {isAllOk(apiStatus)
@@ -82,24 +66,6 @@
         </span>
       </div>
     </div>
-
-    <!-- Usage Progress -->
-    {#if $usageStore}
-      {@const critical = getMostCriticalUsage($usageStore)}
-      {@const pct = Math.round((critical.used / critical.max) * 100)}
-      <div class="w-full max-w-sm space-y-2">
-        <div class="flex justify-between text-xs text-zinc-500">
-          <span>{critical.name}</span>
-          <span>{critical.used}/{critical.max}</span>
-        </div>
-        <div class="h-2 bg-zinc-800 rounded-full overflow-hidden">
-          <div
-            class="h-full rounded-full transition-all duration-500 {getProgressColor(pct)}"
-            style="width: {pct}%"
-          ></div>
-        </div>
-      </div>
-    {/if}
 
     <!-- Start Button -->
     <div class="w-full max-w-sm space-y-3">

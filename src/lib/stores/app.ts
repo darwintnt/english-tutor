@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store'
+import { writable } from 'svelte/store'
 import type { AppScreen, ConversationStatus, Session, Message, Correction, Speed } from '../types'
 
 const STORAGE_KEY = 'english-tutor-sessions'
@@ -23,7 +23,7 @@ function saveToStorage(sessions: Session[]) {
 function createAppStore() {
   const screen = writable<AppScreen>('home')
   const status = writable<ConversationStatus>('idle')
-  const speed = writable<Speed>(1.0)
+  const speed = writable<Speed>(1)
   const currentSession = writable<Session | null>(null)
   const error = writable<string | null>(null)
   const sessionHistory = writable<Session[]>(loadFromStorage())

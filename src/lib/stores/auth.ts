@@ -21,7 +21,7 @@ function createAuthStore() {
     const now = Date.now()
 
     if (configuredPinHash && sessionExpiry) {
-      const expiry = parseInt(sessionExpiry, 10)
+      const expiry = Number.parseInt(sessionExpiry, 10)
       if (now < expiry) {
         return { isAuthenticated: true, sessionExpiry: expiry }
       }
