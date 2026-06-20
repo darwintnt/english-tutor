@@ -14,6 +14,7 @@
   let isProcessingTurn = false
   let currentAudio: HTMLAudioElement | null = null
   let messagesContainer: HTMLDivElement | null = null
+  let pendingTTS: { text: string; audioUrl: string } | null = null
   let isPlayingTTS = false
   let isPaused = false
   let playingMessageId: string | null = null
@@ -286,6 +287,13 @@ RULES:
       const { audioUrl } = await generateTTS(text)
       log('info', 'TTS audio ready')
 
+      if (isIOS) {
+        pendingTTS = { text, audioUrl }
+        isProcessingTurn = false
+        setStatus('idle')
+        return
+      }
+
       currentAudio = new Audio(audioUrl)
       currentAudio.playbackRate = $speed
       log('info', 'Playing audio...')
@@ -322,6 +330,39 @@ RULES:
       setStatus('error')
       isProcessingTurn = false
     }
+  }
+
+  async function playPendingTTS() {
+    if (!pendingTTS || isPlayingTTS) return
+    isPlayingTTS = true
+    setStatus('speaking')
+
+    currentAudio = new Audio(pendingTTS.audioUrl)
+    currentAudio.playbackRate = $speed
+
+    currentAudio.onended = () => {
+      revokeTTSUrl(pendingTTS?.audioUrl ?? '')
+      pendingTTS = null
+      currentAudio = null
+      isPlayingTTS = false
+      playingMessageId = null
+      isPaused = false
+      isProcessingTurn = false
+      setStatus('idle')
+    }
+
+    currentAudio.onerror = () => {
+      revokeTTSUrl(pendingTTS?.audioUrl ?? '')
+      pendingTTS = null
+      currentAudio = null
+      isPlayingTTS = false
+      playingMessageId = null
+      isPaused = false
+      isProcessingTurn = false
+      setStatus('idle')
+    }
+
+    await currentAudio.play()
   }
 
   async function playMessageAudio(msg: Message) {
@@ -522,6 +563,7 @@ RULES:
     }
     isRecording = false
     isProcessingTurn = false
+    pendingTTS = null
   }
 
   function endConversation() {
@@ -714,7 +756,7 @@ RULES:
             <div class="absolute -bottom-6 left-1 flex items-center gap-1">
               <button
                 class="w-8 h-8 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 flex items-center justify-center transition-opacity"
-                onclick={() => togglePlayPause(msg)}
+                onclick={() => (isIOS && pendingTTS ? playPendingTTS() : togglePlayPause(msg))}
               >
                 {#if isPlayingTTS && playingMessageId === msg.id && !isPaused}
                   <svg
