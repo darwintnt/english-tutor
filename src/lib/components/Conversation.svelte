@@ -261,7 +261,12 @@
     }
 
     try {
-      const messages = conversation.map((m) => ({ role: m.role, content: m.content }))
+      // Strip correction lines from assistant history: they are UI-only and
+      // polluting the context makes the LLM imitate free text instead of JSON.
+      const messages = conversation.map((m) => ({
+        role: m.role,
+        content: m.role === 'assistant' ? m.content.split('\n\n📝')[0] : m.content,
+      }))
 
       const systemPrompt = `You are a friendly, concise English conversation tutor.
 
@@ -293,7 +298,7 @@ RULES:
             { role: 'user', content: userText },
           ],
           temperature: 0.7,
-          max_tokens: 300,
+          max_tokens: 1024,
           response_format: { type: 'json_object' },
         }),
       })
