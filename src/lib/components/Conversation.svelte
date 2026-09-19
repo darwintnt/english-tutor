@@ -31,6 +31,54 @@
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
 
+  // iOS Safari blocks programmatic .play() unless playback already started
+  // inside a user gesture. Playing a silent WAV once on the first mic tap
+  // unlocks programmatic playback for the rest of the session.
+  let audioUnlocked = false
+
+  function makeSilentWavUrl(): string {
+    const rate = 8000
+    const samples = rate / 10 // 0.1s
+    const view = new DataView(new ArrayBuffer(44 + samples * 2))
+    const writeStr = (offset: number, s: string) => {
+      for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i))
+    }
+    writeStr(0, 'RIFF')
+    view.setUint32(4, 36 + samples * 2, true)
+    writeStr(8, 'WAVE')
+    writeStr(12, 'fmt ')
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true) // PCM
+    view.setUint16(22, 1, true) // mono
+    view.setUint32(24, rate, true)
+    view.setUint32(28, rate * 2, true)
+    view.setUint16(32, 2, true)
+    view.setUint16(34, 16, true)
+    writeStr(36, 'data')
+    view.setUint32(40, samples * 2, true)
+    // Samples stay zero → silence
+    return URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }))
+  }
+
+  function unlockAudio() {
+    if (audioUnlocked) return
+    try {
+      const url = makeSilentWavUrl()
+      const silent = new Audio(url)
+      silent.volume = 0
+      silent
+        .play()
+        .then(() => {
+          audioUnlocked = true
+          log('info', 'Audio unlocked for this session')
+        })
+        .catch((err) => log('warn', `Audio unlock failed: ${err?.message ?? err}`))
+        .finally(() => URL.revokeObjectURL(url))
+    } catch (err) {
+      log('warn', `Audio unlock failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   function log(level: 'info' | 'error' | 'warn', msg: string) {
     const time = new Date().toLocaleTimeString('en-GB', { hour12: false })
     logs = [...logs.slice(-99), { time, level, msg }]
@@ -109,6 +157,7 @@
   function startRecording() {
     if (!sessionActive || isRecording) return
 
+    unlockAudio() // must run synchronously inside the tap gesture
     audioChunks = []
     isRecording = true
     setStatus('listening')
@@ -287,36 +336,43 @@ RULES:
       const { audioUrl } = await generateTTS(text)
       log('info', 'TTS audio ready')
 
-      if (isIOS) {
+      const audio = new Audio(audioUrl)
+      audio.playbackRate = $speed
+      log('info', 'Playing audio...')
+
+      audio.onended = () => {
+        revokeTTSUrl(audioUrl)
+        currentAudio = null
+        playingMessageId = null
+        isPaused = false
+        isProcessingTurn = false
+        setStatus('idle')
+      }
+
+      audio.onerror = () => {
+        revokeTTSUrl(audioUrl)
+        currentAudio = null
+        playingMessageId = null
+        isPaused = false
+        isProcessingTurn = false
+        setStatus('idle')
+      }
+
+      currentAudio = audio
+
+      try {
+        await audio.play()
+      } catch {
+        // Autoplay still blocked (unlock didn't stick) → tap-to-play fallback
+        log('warn', 'Autoplay blocked, waiting for tap to play')
+        audio.onended = null
+        audio.onerror = null
+        currentAudio = null
         pendingTTS = { text, audioUrl }
         isProcessingTurn = false
         setStatus('idle')
         return
       }
-
-      currentAudio = new Audio(audioUrl)
-      currentAudio.playbackRate = $speed
-      log('info', 'Playing audio...')
-
-      currentAudio.onended = () => {
-        revokeTTSUrl(audioUrl)
-        currentAudio = null
-        playingMessageId = null
-        isPaused = false
-        isProcessingTurn = false
-        setStatus('idle')
-      }
-
-      currentAudio.onerror = () => {
-        revokeTTSUrl(audioUrl)
-        currentAudio = null
-        playingMessageId = null
-        isPaused = false
-        isProcessingTurn = false
-        setStatus('idle')
-      }
-
-      await currentAudio.play()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log('error', `TTS error: ${msg}`)
