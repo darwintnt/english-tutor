@@ -267,16 +267,16 @@
 
 IMPORTANT: You MUST correct grammar and pronunciation errors.
 
+Respond ONLY with a JSON object (no markdown fences, no extra text) with this exact shape:
+{"reply": "<your English response>", "corrections": [{"original": "<the user's exact wrong words>", "corrected": "<the correct English>"}]}
+
 RULES:
-1. Keep responses SHORT — 1 to 3 sentences max.
-2. Ask ONE follow-up question at the end to keep conversation going.
-3. If user speaks Spanish, encourage them to try in English but continue in English.
-4. ALWAYS correct grammar errors when the user writes in English. The correction in Spanish goes at the END of your response, after your English text. Format:
-   - Grammar error: "Corrección: dijiste 'X' pero lo correcto es 'Y'."
-   - Awkward phrasing: "Sugerencia: suena más natural decir 'Y'."
-   - Didn't understand: "Nota: No entendí bien, ¿podrías repetirlo?"
-5. If the message is correct, just respond normally without any Spanish.
-6. If user says goodbye, say farewell and end.`
+1. Keep "reply" SHORT — 1 to 3 sentences max.
+2. Ask ONE follow-up question at the end of "reply" to keep the conversation going.
+3. If user speaks Spanish, encourage them to try in English but reply in English.
+4. ALWAYS include one entry in "corrections" per grammar error when the user writes in English (quote the user's exact wrong words). Use an empty array [] if there are no errors.
+5. If the user says goodbye, say a warm farewell in "reply" and end.
+6. If you don't understand, put the request to repeat in "reply" (e.g. "I didn't quite catch that, could you say it again?").`
 
       log('info', 'Sending to LLM...')
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -293,7 +293,8 @@ RULES:
             { role: 'user', content: userText },
           ],
           temperature: 0.7,
-          max_tokens: 250,
+          max_tokens: 300,
+          response_format: { type: 'json_object' },
         }),
       })
 
@@ -303,15 +304,47 @@ RULES:
       }
 
       const data = await response.json()
-      const assistantMessage = data.choices[0]?.message?.content ?? "I'm not sure how to respond."
+      const rawContent = data.choices[0]?.message?.content ?? ''
       usageStore.trackLLM()
-      log('info', `LLM response: "${assistantMessage.substring(0, 50)}..."`)
 
-      addMessage({ role: 'assistant', content: assistantMessage })
-      parseCorrections(assistantMessage)
+      let reply = rawContent
+      const corrections: { original: string; corrected: string }[] = []
+      try {
+        const parsed = JSON.parse(rawContent) as {
+          reply?: unknown
+          corrections?: { original?: unknown; corrected?: unknown }[]
+        }
+        if (typeof parsed.reply === 'string' && parsed.reply.trim()) reply = parsed.reply.trim()
+        for (const c of parsed.corrections ?? []) {
+          if (
+            typeof c.original === 'string' &&
+            c.original.trim() &&
+            typeof c.corrected === 'string' &&
+            c.corrected.trim()
+          ) {
+            corrections.push({ original: c.original.trim(), corrected: c.corrected.trim() })
+          }
+        }
+      } catch {
+        log('warn', 'LLM returned non-JSON output, using raw text')
+      }
+      log('info', `LLM response: "${reply.substring(0, 50)}..."`)
+
+      let content = reply
+      if (corrections.length > 0) {
+        content += `\n\n📝 ${corrections.map((c) => `"${c.original}" → "${c.corrected}"`).join('\n')}`
+      }
+      addMessage({ role: 'assistant', content })
+      for (const c of corrections) {
+        addCorrection({
+          original: c.original,
+          corrected: c.corrected,
+          explanation: `Corrección: "${c.original}" → "${c.corrected}"`,
+        })
+      }
       playingMessageId = conversation[conversation.length - 1]?.id
       log('info', 'Generating TTS...')
-      await playTTS(assistantMessage)
+      await playTTS(reply)
     } catch (err) {
       log('error', `LLM error: ${err instanceof Error ? err.message : String(err)}`)
       isProcessingTurn = false
@@ -625,24 +658,6 @@ RULES:
   function endConversation() {
     cleanup()
     appStore.endSession()
-  }
-
-  function parseCorrections(text: string) {
-    // "Corrección: dijiste 'X' pero lo correcto es 'Y'."
-    const pattern =
-      /Corrección:[\s\S]*?dijiste\s+['"]([^'"]+)['"][\s\S]*?lo\s+correcto\s+es\s+['"]([^'"]+)['"]/gi
-    let match
-    while ((match = pattern.exec(text)) !== null) {
-      const original = match[1].trim()
-      const corrected = match[2].trim()
-      if (original && corrected) {
-        addCorrection({
-          original,
-          corrected,
-          explanation: `Corrección: "${original}" → "${corrected}"`,
-        })
-      }
-    }
   }
 
   function getStatusText(s: typeof $status) {
